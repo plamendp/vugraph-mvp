@@ -9,7 +9,8 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "stack": "docker compose up --build"
   },
   "dependencies": {
     "drizzle-orm": "^0.39.0",

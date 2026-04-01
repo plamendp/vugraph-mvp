@@ -40,9 +40,11 @@ Web-based vugraph system for broadcasting contract bridge matches in real time.
 ## Tech Stack
 
 - **Runtime**: Node.js + TypeScript (ESM)
-- **Framework**: Fastify (pure HTTP service, no WebSocket library)
+- **Framework**: Fastify (pure HTTP service)
+- **ORM**: Drizzle ORM (TypeScript-native, SQL-like)
 - **Database**: Postgres (local Docker container; AWS RDS in cloud)
-- **Cache/Connection State**: Redis (local Docker container; AWS ElastiCache in cloud)
+- **WebSocket Broker**: Centrifugo v6 (local Docker container; AWS ECS in cloud)
+- **Centrifugo State**: Redis (local Docker container; AWS ElastiCache in cloud)
 - **Testing**: Vitest
 - **Containerization**: Docker + Docker Compose
 
@@ -50,7 +52,7 @@ Web-based vugraph system for broadcasting contract bridge matches in real time.
 
 ### Design Principle: Environment Parity
 
-The application code is identical in local and cloud deployments. Only the infrastructure wrapper changes. A single env var `LOCAL_DEV` signals local development when needed.
+The application code is identical in local and cloud deployments. Only the outer routing layer differs (nginx vs ALB/CloudFront). Centrifugo + Redis run as the same Docker images in both environments.
 
 ### Local (Docker Compose — 7 containers)
 
@@ -58,44 +60,55 @@ The application code is identical in local and cloud deployments. Only the infra
 Client (browser)
     |
   nginx (:80)
-    |-- /api/*          --> backend (:3000)
-    |-- /ws             --> ws-gateway-sim (:4000)
-    |-- /operator/*     --> operator-client (:5001)
-    |-- /spectator/*    --> spectator-client (:5002)
+    |-- /api/*                    --> backend (:3000)
+    |-- /connection/websocket     --> centrifugo (:8000)
+    |-- /operator/*               --> operator-client (:5001)
+    |-- /spectator/*              --> spectator-client (:5002)
 
-  ws-gateway-sim (:4000)
+  centrifugo (:8000)
         |
-        v  HTTP POST
-    backend (:3000)
+        ├── Redis (:6379)         — pub/sub, presence, history
         |
-   +----+----+
- Redis    Postgres
+        └── proxy HTTP            — forwards client events to backend
+            ├── connect proxy     --> POST backend:3000/centrifugo/connect
+            ├── rpc proxy         --> POST backend:3000/centrifugo/rpc
+            └── subscribe proxy   --> POST backend:3000/centrifugo/subscribe
+
+  backend (:3000)
+        |
+        ├── publishes to centrifugo HTTP API (http://centrifugo:8000/api)
+        |
+        └── Postgres (:5432)
 ```
 
 ### Cloud (AWS)
 
 ```
-API Gateway HTTP    --> backend (ECS) --> ElastiCache Redis, RDS Postgres
-API Gateway WS      --> backend (ECS)
-CloudFront + S3     --> operator-client, spectator-client
+ALB / CloudFront
+    |-- /api/*                    --> backend (ECS)
+    |-- /connection/websocket     --> centrifugo (ECS)
+    |-- /operator, /spectator     --> S3 + CloudFront
+
+  centrifugo (ECS)  --> ElastiCache Redis
+       └── proxy HTTP --> backend (ECS)
+
+  backend (ECS) --> RDS Postgres
+       └── publishes to centrifugo HTTP API
 ```
 
-### WebSocket Architecture
+### How Real-Time Works (Centrifugo Proxy Pattern)
 
-The backend **never** uses `ws` or any WebSocket library. WebSocket connections are managed externally:
+1. Client connects to Centrifugo via WebSocket
+2. Centrifugo calls **connect proxy** → backend authenticates, returns user ID + role
+3. Client subscribes to channel `match:{id}` → Centrifugo calls **subscribe proxy** → backend authorizes
+4. Operator sends bid/play via **RPC** → Centrifugo calls **RPC proxy** → backend validates with match engine
+5. Backend publishes state updates to Centrifugo HTTP API → Centrifugo fans out to all subscribers
 
-- **Locally**: `ws-gateway-sim` container accepts WebSocket connections and forwards to backend as HTTP
-- **Cloud**: AWS API Gateway WebSocket API does the same
-
-Backend HTTP routes for WebSocket operations:
-- `POST /ws/connect` — called on client connect (with connectionId)
-- `POST /ws/disconnect` — called on client disconnect
-- `POST /ws/message` — called when client sends a message
-- Backend pushes messages by POSTing to the gateway's callback URL (`/@connections/{connectionId}`)
+**The backend never holds WebSocket connections.** It only receives HTTP proxy calls from Centrifugo and publishes back via Centrifugo's HTTP API.
 
 ### Data Ownership
-- **Redis** (ephemeral): WebSocket connection IDs, room memberships, active session state. If Redis dies, clients reconnect. No persistent data in Redis.
-- **Postgres** (persistent): Users, roles, permissions, matches, boards, scores. All persistent domain data.
+- **Redis** (Centrifugo's concern): pub/sub fanout, channel presence, message history. If Redis dies, clients reconnect.
+- **Postgres** (our concern): matches, boards, scores — all persistent domain data.
 
 ## Commands
 
@@ -103,12 +116,14 @@ Backend HTTP routes for WebSocket operations:
 - `npm test` — run tests (vitest)
 - `npm run test:watch` — run tests in watch mode
 - `npx tsc --noEmit` — type-check without emitting
+- `docker compose up` — start full local stack
+- `docker compose down` — stop local stack
 
 ## Project Structure
 
 ```
 src/
-  server.ts              — Entry point (Fastify HTTP setup)
+  server.ts              — Entry point (Fastify HTTP setup + Centrifugo proxy routes)
   config.ts              — All config from environment variables
   engine/                — Match engine (pure logic, no I/O)
     types.ts             — All types and constants
@@ -117,89 +132,69 @@ src/
     play.ts              — Play validation and trick winner logic
     scoring.ts           — Duplicate bridge scoring + IMP conversion
     match-engine.ts      — Central state machine (MatchEngine class)
-  ws/                    — WebSocket HTTP handlers (no ws library)
-    protocol.ts          — Message types + parseInboundMessage
-    rooms.ts             — RoomManager (backed by Redis)
-    handler.ts           — Message router (auth, call, play, undo, etc.)
+  centrifugo/            — Centrifugo integration
+    client.ts            — HTTP client for Centrifugo server API (publish, etc.)
+    proxy-handler.ts     — Fastify routes for connect/subscribe/rpc proxy
   api/                   — REST API
     matches.ts           — Match CRUD routes
     boards.ts            — Board routes
   db/
-    schema.sql           — Postgres schema
+    schema.ts            — Drizzle table definitions
+    database.ts          — DB access layer (Drizzle + pg)
     types.ts             — IDatabase async interface
-    database.ts          — DB access layer (pg.Pool, implements IDatabase)
+    mock-database.ts     — In-memory mock for tests
 tests/
   engine/
     auction.test.ts      — Auction validation tests
     play.test.ts         — Play validation + trick flow tests
   ws/
     protocol.test.ts     — Message parsing tests
+centrifugo/
+  config.json            — Centrifugo configuration
+docker-compose.yml       — Local 7-container stack
+Dockerfile               — Backend multi-stage build
+nginx/
+  nginx.conf             — Reverse proxy config
 ```
 
 ## Environment Variables
 
 All configuration is via env vars (defaults in `src/config.ts`):
 
-- `LOCAL_DEV` — set to `true` for local Docker development
 - `PORT` — server port (default: 3000)
 - `HOST` — bind address (default: 0.0.0.0)
 - `DATABASE_URL` — Postgres connection string
-- `REDIS_URL` — Redis connection string
 - `OPERATOR_TOKEN` — auth token for operator connections
-- `WS_GATEWAY_CALLBACK_URL` — URL for pushing messages to clients via gateway
+- `CENTRIFUGO_API_URL` — Centrifugo HTTP API endpoint (default: http://localhost:8000/api)
+- `CENTRIFUGO_API_KEY` — API key for Centrifugo server API
 
 ## Current Status
 
 **Implemented:**
-- Match engine with full auction + play validation, undo support, scoring (src/engine/ — pure logic, no I/O)
-- REST API for match/board CRUD (src/api/)
-- 55 tests, all passing
+- Match engine with full auction + play validation, undo support, scoring (src/engine/)
+- REST API for match/board CRUD (src/api/ — async, uses IDatabase interface)
 - WebSocket protocol and message parsing (src/ws/protocol.ts)
+- IDatabase async interface (src/db/types.ts)
+- Postgres DB implementation with pg.Pool (src/db/database.ts) — being replaced with Drizzle
+- 55 tests, all passing
 
-**Dockerization — IN PROGRESS (Phase 1 of 4):**
-
-Phase 1 (DB migration) — partially done:
-- [x] `src/db/types.ts` — `IDatabase` async interface created
-- [x] `src/db/schema.sql` — converted to Postgres syntax (SERIAL, TIMESTAMPTZ, JSONB)
-- [x] `src/db/database.ts` — rewritten from better-sqlite3 (sync) to pg.Pool (async), implements IDatabase
-- [x] `src/config.ts` — added DATABASE_URL, REDIS_URL, WS_GATEWAY_CALLBACK_URL, LOCAL_DEV; removed DB_PATH
-- [x] `src/api/matches.ts` — async handlers, imports IDatabase
-- [x] `src/api/boards.ts` — async handlers, imports IDatabase
-- [ ] Swap better-sqlite3 → pg in package.json
-- [ ] Create mock database for tests (src/db/mock-database.ts)
-- [ ] Update server.ts (combined with Phase 2)
-
-Phase 2 (WS migration) — not started:
-- [ ] Rewrite src/ws/rooms.ts — Redis-backed RoomManager (ioredis), connectionId-based
-- [ ] Rewrite src/ws/handler.ts — connectionId instead of WebSocket objects, async
-- [ ] Rewrite src/server.ts — remove ws library, add POST /ws/connect, /ws/disconnect, /ws/message routes
-- [ ] Swap ws → ioredis in package.json
-
-Phase 3 (Docker infrastructure) — not started:
-- [ ] Dockerfile (backend, multi-stage)
-- [ ] ws-gateway-sim/ (Node.js container, ~120 lines, uses ws library)
-- [ ] operator-client/ (Vite + React-TS placeholder)
-- [ ] spectator-client/ (Vite + React-TS placeholder)
-- [ ] nginx/nginx.conf (reverse proxy)
-- [ ] docker-compose.yml (7 services)
-
-Phase 4 (Testing & polish) — not started:
-- [ ] Verify all tests pass
-- [ ] Add docker:up, docker:down npm scripts
+**In Progress:**
+- Drizzle ORM migration (replacing raw pg queries)
+- Centrifugo integration (replacing ws-based handler)
+- Docker infrastructure
 
 **Not yet implemented:**
-- Operator client UI (React SPA — placeholder only in Phase 3)
-- Spectator client UI (React SPA — placeholder only in Phase 3)
+- Operator client UI (React SPA)
+- Spectator client UI (React SPA)
 - File import (.pbn, .dup, .lin)
 - Commentary system
-- AWS CDK deployment
+- AWS deployment
 
 ## Decisions Made
 
-- **Postgres client**: `pg` (node-postgres) with Pool
-- **Redis client**: `ioredis`
-- **ws-gateway-sim**: Node.js with `ws` library (~120 lines)
-- **Placeholder clients**: Vite + React-TS scaffold
+- **ORM**: Drizzle ORM (TypeScript-native, lightweight, SQL-like)
+- **WebSocket broker**: Centrifugo v6 (proxy pattern — backend stays pure HTTP)
+- **Redis**: Used by Centrifugo for pub/sub + presence + history; backend does NOT use Redis directly
 - **Testing strategy**: IDatabase interface + in-memory mock for unit tests; engine/protocol tests unchanged
 
 ## Key Conventions
@@ -219,25 +214,25 @@ Dealer:  N    E    S    W    N    E    S    W    N    E    S    W    N    E    S
 
 For board numbers > 16: `(boardNumber - 1) % 16 + 1`.
 
-## WebSocket Protocol (Message Types)
+## Real-Time Protocol
 
-### Client -> Server (via gateway)
-- `auth` — authenticate with token and role
+### Client → Centrifugo → Backend (via RPC proxy)
+
+Operator sends RPC calls through Centrifugo. The `method` field maps to actions:
+
 - `load_board` — load a board with hands, dealer, vulnerability
 - `call` — make a bid/pass/double/redouble
 - `play` — play a card
 - `undo` — undo last action
 - `set_result` — manually set result (e.g., claim)
 
-### Server -> Client (via gateway callback)
+### Backend → Centrifugo → Clients (via publish API)
+
+Backend publishes to channel `match:{matchId}`:
+
 - `state` — full state sync
 - `call_made` — bid was made
 - `card_played` — card was played
 - `trick_complete` — trick finished
 - `board_complete` — board finished with result
 - `undo_performed` — undo with new state
-
-## File Format Support (Stretch Goal)
-- `.pbn` (Portable Bridge Notation) — industry standard
-- `.dup` (Duplimate) — dealing machine format
-- `.lin` (BBO) — Bridge Base Online format

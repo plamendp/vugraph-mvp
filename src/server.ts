@@ -1,41 +1,27 @@
 import Fastify from "fastify";
-import { WebSocketServer } from "ws";
-import { PORT, HOST, DB_PATH } from "./config.js";
+import { PORT, HOST, DATABASE_URL } from "./config.js";
 import { DB } from "./db/database.js";
-import { RoomManager } from "./ws/rooms.js";
-import { handleMessage } from "./ws/handler.js";
 import { matchRoutes } from "./api/matches.js";
 import { boardRoutes } from "./api/boards.js";
+import { centrifugoProxyRoutes } from "./centrifugo/proxy-handler.js";
 
 const app = Fastify({ logger: true });
-const db = new DB(DB_PATH);
-const rooms = new RoomManager();
+const db = new DB(DATABASE_URL);
 
 // REST routes
 matchRoutes(app, db);
 boardRoutes(app, db);
 
+// Centrifugo proxy routes
+centrifugoProxyRoutes(app, db);
+
 // Health check
 app.get("/api/health", () => ({ status: "ok" }));
 
-// Start HTTP server, then attach WebSocket
 const start = async () => {
+  await db.init();
   await app.listen({ port: PORT, host: HOST });
-
-  const wss = new WebSocketServer({ server: app.server });
-
-  wss.on("connection", (ws) => {
-    ws.on("message", (data) => {
-      handleMessage(ws, data.toString(), rooms, db);
-    });
-
-    ws.on("close", () => {
-      rooms.removeDisconnected(ws);
-    });
-  });
-
-  console.log(`Bridge Vugraph server running on http://${HOST}:${PORT}`);
-  console.log(`WebSocket server ready`);
+  console.log(`Bridge Vugraph backend running on http://${HOST}:${PORT}`);
 };
 
 start().catch((err) => {

@@ -2,11 +2,12 @@ import type { FastifyInstance } from "fastify";
 import { v4 as uuid } from "uuid";
 import type { IDatabase } from "../db/types.js";
 import type { MatchStatus } from "../engine/types.js";
+import { requireRole } from "../auth/middleware.js";
 
 export function matchRoutes(app: FastifyInstance, db: IDatabase): void {
   app.post<{
     Body: { title: string; segment?: string; homeTeam: string; awayTeam: string };
-  }>("/api/matches", async (req, reply) => {
+  }>("/api/matches", { preHandler: [requireRole("admin", "operator")] }, async (req, reply) => {
     const { title, segment, homeTeam, awayTeam } = req.body;
     const match = await db.createMatch({
       id: uuid(),
@@ -35,7 +36,7 @@ export function matchRoutes(app: FastifyInstance, db: IDatabase): void {
   app.patch<{
     Params: { id: string };
     Body: { status: MatchStatus };
-  }>("/api/matches/:id", async (req, reply) => {
+  }>("/api/matches/:id", { preHandler: [requireRole("admin", "operator")] }, async (req, reply) => {
     const match = await db.getMatch(req.params.id);
     if (!match) {
       reply.code(404).send({ error: "Match not found" });
@@ -45,7 +46,7 @@ export function matchRoutes(app: FastifyInstance, db: IDatabase): void {
     reply.send(await db.getMatch(req.params.id));
   });
 
-  app.delete<{ Params: { id: string } }>("/api/matches/:id", async (req, reply) => {
+  app.delete<{ Params: { id: string } }>("/api/matches/:id", { preHandler: [requireRole("admin", "operator")] }, async (req, reply) => {
     const match = await db.getMatch(req.params.id);
     if (!match) {
       reply.code(404).send({ error: "Match not found" });

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { IDatabase } from "../db/types.js";
 import type { Card, Seat, Vulnerability } from "../engine/types.js";
+import { requireRole } from "../auth/middleware.js";
 
 export function boardRoutes(app: FastifyInstance, db: IDatabase): void {
   app.get<{ Params: { matchId: string } }>(
@@ -30,7 +31,7 @@ export function boardRoutes(app: FastifyInstance, db: IDatabase): void {
       vulnerability: Vulnerability;
       hands: Record<Seat, Card[]>;
     };
-  }>("/api/matches/:matchId/boards", async (req, reply) => {
+  }>("/api/matches/:matchId/boards", { preHandler: [requireRole("admin", "operator")] }, async (req, reply) => {
     const { boardNumber, dealer, vulnerability, hands } = req.body;
     await db.saveBoard({
       matchId: req.params.matchId,

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { OPERATOR_TOKEN } from "../config.js";
+import { verifyToken } from "../auth/jwt.js";
+import type { JwtPayload } from "../auth/types.js";
 import { MatchEngine } from "../engine/match-engine.js";
 import type { IDatabase } from "../db/types.js";
 import type { Call, Card, Seat, Vulnerability } from "../engine/types.js";
@@ -30,30 +31,31 @@ export function centrifugoProxyRoutes(app: FastifyInstance, db: IDatabase): void
       transport: string;
       protocol: string;
       encoding: string;
-      data?: { token?: string; role?: string };
+      data?: { token?: string };
     };
   }>("/centrifugo/connect", async (req, reply) => {
     const { data } = req.body;
     const token = data?.token;
-    const role = data?.role ?? "spectator";
 
-    // Authenticate operators
-    if (role === "operator") {
-      if (token !== OPERATOR_TOKEN) {
-        return reply.send({
-          error: { code: 403, message: "Invalid operator token" },
-        });
-      }
+    if (!token) {
+      return reply.send({
+        error: { code: 401, message: "Missing authentication token" },
+      });
     }
 
-    // Return a user ID and role info
-    // Centrifugo will associate this user with the connection
-    const userId = role === "operator" ? "operator" : `spectator:${req.body.client}`;
+    let payload: JwtPayload;
+    try {
+      payload = verifyToken(token);
+    } catch {
+      return reply.send({
+        error: { code: 401, message: "Invalid or expired token" },
+      });
+    }
 
     return reply.send({
       result: {
-        user: userId,
-        data: { role },
+        user: String(payload.sub),
+        data: { username: payload.username, roles: payload.roles },
       },
     });
   });
@@ -111,10 +113,17 @@ export function centrifugoProxyRoutes(app: FastifyInstance, db: IDatabase): void
   }>("/centrifugo/rpc", async (req, reply) => {
     const { user, method, data } = req.body;
 
-    // Only operators can perform RPC actions
-    if (user !== "operator") {
+    // Look up user roles from DB to verify operator/admin access
+    const userId = parseInt(user, 10);
+    if (isNaN(userId)) {
       return reply.send({
-        error: { code: 403, message: "Operator authentication required" },
+        error: { code: 403, message: "Invalid user" },
+      });
+    }
+    const roles = await db.getUserRoles(userId);
+    if (!roles.includes("operator") && !roles.includes("admin")) {
+      return reply.send({
+        error: { code: 403, message: "Operator or admin role required" },
       });
     }
 

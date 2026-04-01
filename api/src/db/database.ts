@@ -5,8 +5,10 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { BoardState, Match, MatchStatus } from "../engine/types.js";
+import type { RoleName, User } from "../auth/types.js";
+import { ALL_ROLES } from "../auth/types.js";
 import type { IDatabase } from "./types.js";
-import { matches, boards } from "./schema.js";
+import { matches, boards, users, roles, userRoles } from "./schema.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -23,6 +25,7 @@ export class DB implements IDatabase {
     // Run raw schema SQL for table creation (idempotent with IF NOT EXISTS)
     const schema = readFileSync(resolve(__dirname, "schema.sql"), "utf-8");
     await this.pool.query(schema);
+    await this.ensureRolesExist(ALL_ROLES);
   }
 
   // ── Matches ──
@@ -112,6 +115,54 @@ export class DB implements IDatabase {
     return rows.map(rowToBoard);
   }
 
+  // ── Users ──
+
+  async getUserByUsername(username: string): Promise<User | null> {
+    const rows = await this.db.select().from(users).where(eq(users.username, username));
+    if (rows.length === 0) return null;
+    return rowToUser(rows[0]);
+  }
+
+  async getUserById(id: number): Promise<User | null> {
+    const rows = await this.db.select().from(users).where(eq(users.id, id));
+    if (rows.length === 0) return null;
+    return rowToUser(rows[0]);
+  }
+
+  async createUser(username: string, passwordHash: string): Promise<User> {
+    const [row] = await this.db
+      .insert(users)
+      .values({ username, passwordHash })
+      .returning();
+    return rowToUser(row);
+  }
+
+  // ── Roles ──
+
+  async getUserRoles(userId: number): Promise<RoleName[]> {
+    const rows = await this.db
+      .select({ name: roles.name })
+      .from(userRoles)
+      .innerJoin(roles, eq(userRoles.roleId, roles.id))
+      .where(eq(userRoles.userId, userId));
+    return rows.map((r) => r.name as RoleName);
+  }
+
+  async assignRole(userId: number, roleName: RoleName): Promise<void> {
+    const [role] = await this.db.select().from(roles).where(eq(roles.name, roleName));
+    if (!role) throw new Error(`Role not found: ${roleName}`);
+    await this.db
+      .insert(userRoles)
+      .values({ userId, roleId: role.id })
+      .onConflictDoNothing();
+  }
+
+  async ensureRolesExist(roleNames: RoleName[]): Promise<void> {
+    for (const name of roleNames) {
+      await this.db.insert(roles).values({ name }).onConflictDoNothing();
+    }
+  }
+
   async close(): Promise<void> {
     await this.pool.end();
   }
@@ -125,6 +176,15 @@ function rowToMatch(row: typeof matches.$inferSelect): Match {
     homeTeam: row.homeTeam,
     awayTeam: row.awayTeam,
     status: row.status as Match["status"],
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
+  };
+}
+
+function rowToUser(row: typeof users.$inferSelect): User {
+  return {
+    id: row.id,
+    username: row.username,
+    passwordHash: row.passwordHash,
     createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
   };
 }

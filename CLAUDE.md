@@ -120,6 +120,7 @@ From `api/`:
 - `npm run dev` — start backend dev server only (tsx, needs Postgres/Centrifugo running)
 - `npm test` — run tests (vitest)
 - `npm run test:watch` — run tests in watch mode
+- `npm run db:seed` — seed admin user (needs DATABASE_URL)
 - `npx tsc --noEmit` — type-check without emitting
 
 ## Project Structure
@@ -139,20 +140,30 @@ api/                       — Backend service
     centrifugo/            — Centrifugo integration
       client.ts            — HTTP client for Centrifugo server API (publish, etc.)
       proxy-handler.ts     — Fastify routes for connect/subscribe/rpc proxy
+    auth/                  — Authentication & authorization
+      types.ts             — RoleName, User, JwtPayload types
+      password.ts          — bcrypt hash/verify
+      jwt.ts               — JWT sign/verify (HMAC with CENTRIFUGO_TOKEN_SECRET)
+      middleware.ts         — Global JWT hook + requireRole preHandler
     api/                   — REST API
-      matches.ts           — Match CRUD routes
-      boards.ts            — Board routes
+      auth.ts              — Login, register, me routes
+      matches.ts           — Match CRUD routes (write ops: admin/operator only)
+      boards.ts            — Board routes (write ops: admin/operator only)
     db/
-      schema.ts            — Drizzle table definitions
+      schema.ts            — Drizzle table definitions (matches, boards, users, roles, user_roles)
+      schema.sql           — Raw SQL for idempotent table creation
       database.ts          — DB access layer (Drizzle + pg)
       types.ts             — IDatabase async interface
       mock-database.ts     — In-memory mock for tests
+      seed.ts              — Seeds admin user (npm run db:seed)
     ws/
       protocol.ts          — Message type definitions + parsing
   tests/
     engine/
       auction.test.ts      — Auction validation tests
       play.test.ts         — Play validation + trick flow tests
+    auth/
+      auth.test.ts         — Password, JWT, auth flow tests
     ws/
       protocol.test.ts     — Message parsing tests
   Dockerfile               — Backend multi-stage build
@@ -179,7 +190,6 @@ Backend env vars (in `src/config.ts`):
 - `HOST` — bind address (default: 0.0.0.0)
 - `LOCAL_DEV` — `true` when running via Docker Compose (hardcoded in docker-compose.yml)
 - `DATABASE_URL` — Postgres connection string (required, constructed from POSTGRES_* vars in compose)
-- `OPERATOR_TOKEN` — auth token for operator connections (required)
 - `CENTRIFUGO_API_URL` — Centrifugo HTTP API endpoint (default: http://localhost:8000/api)
 - `CENTRIFUGO_API_KEY` — API key for Centrifugo server API (required)
 - `CENTRIFUGO_TOKEN_SECRET` — HMAC secret shared with Centrifugo for JWT signing (required)
@@ -191,12 +201,18 @@ See `example.env` for the full list including Postgres and Centrifugo admin vars
 **Implemented:**
 - Match engine with full auction + play validation, undo support, scoring (src/engine/)
 - REST API for match/board CRUD (src/api/ — async, uses IDatabase interface)
+- User authentication with JWT + bcrypt (src/auth/)
+- Role-based access control: admin, operator, spectator, commentator
+- Auth routes: login, register (admin-only), me
+- Role guards on write operations (matches, boards, Centrifugo RPC)
+- Centrifugo connect proxy uses JWT verification (no more OPERATOR_TOKEN)
 - Drizzle ORM for Postgres (src/db/schema.ts + database.ts)
 - Centrifugo proxy integration (src/centrifugo/ — connect, subscribe, RPC handlers)
 - WebSocket protocol and message type definitions (src/ws/protocol.ts)
 - Docker infrastructure: 5 services (nginx, backend, centrifugo, redis, postgres)
 - .env-based secrets management with example.env template
-- 55 tests, all passing
+- Admin seed script (npm run db:seed)
+- 68 tests, all passing
 
 **Not yet implemented:**
 - Operator client UI (React SPA)
@@ -210,6 +226,7 @@ See `example.env` for the full list including Postgres and Centrifugo admin vars
 - **ORM**: Drizzle ORM (TypeScript-native, lightweight, SQL-like)
 - **WebSocket broker**: Centrifugo v6 (proxy pattern — backend stays pure HTTP)
 - **Redis**: Used by Centrifugo for pub/sub + presence + history; backend does NOT use Redis directly
+- **Auth**: JWT using CENTRIFUGO_TOKEN_SECRET as shared HMAC secret; bcrypt for password hashing; 24h token expiry; no refresh tokens (MVP)
 - **Testing strategy**: IDatabase interface + in-memory mock for unit tests; engine/protocol tests unchanged
 
 ## Key Conventions

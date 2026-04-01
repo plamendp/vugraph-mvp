@@ -112,50 +112,61 @@ ALB / CloudFront
 
 ## Commands
 
+From project root:
 - `npm run stack` — build and start full local Docker stack
+- `npm run stack:down` — stop local stack
+
+From `api/`:
 - `npm run dev` — start backend dev server only (tsx, needs Postgres/Centrifugo running)
 - `npm test` — run tests (vitest)
 - `npm run test:watch` — run tests in watch mode
 - `npx tsc --noEmit` — type-check without emitting
-- `docker compose down` — stop local stack
 
 ## Project Structure
 
 ```
-src/
-  server.ts              — Entry point (Fastify HTTP setup + Centrifugo proxy routes)
-  config.ts              — All config from environment variables
-  engine/                — Match engine (pure logic, no I/O)
-    types.ts             — All types and constants
-    card-utils.ts        — Card/bid parsing, seat helpers, vulnerability lookup
-    auction.ts           — Auction validation and contract determination
-    play.ts              — Play validation and trick winner logic
-    scoring.ts           — Duplicate bridge scoring + IMP conversion
-    match-engine.ts      — Central state machine (MatchEngine class)
-  centrifugo/            — Centrifugo integration
-    client.ts            — HTTP client for Centrifugo server API (publish, etc.)
-    proxy-handler.ts     — Fastify routes for connect/subscribe/rpc proxy
-  api/                   — REST API
-    matches.ts           — Match CRUD routes
-    boards.ts            — Board routes
-  db/
-    schema.ts            — Drizzle table definitions
-    database.ts          — DB access layer (Drizzle + pg)
-    types.ts             — IDatabase async interface
-    mock-database.ts     — In-memory mock for tests
-tests/
-  engine/
-    auction.test.ts      — Auction validation tests
-    play.test.ts         — Play validation + trick flow tests
-  ws/
-    protocol.test.ts     — Message parsing tests
+api/                       — Backend service
+  src/
+    server.ts              — Entry point (Fastify HTTP setup + Centrifugo proxy routes)
+    config.ts              — All config from environment variables
+    engine/                — Match engine (pure logic, no I/O)
+      types.ts             — All types and constants
+      card-utils.ts        — Card/bid parsing, seat helpers, vulnerability lookup
+      auction.ts           — Auction validation and contract determination
+      play.ts              — Play validation and trick winner logic
+      scoring.ts           — Duplicate bridge scoring + IMP conversion
+      match-engine.ts      — Central state machine (MatchEngine class)
+    centrifugo/            — Centrifugo integration
+      client.ts            — HTTP client for Centrifugo server API (publish, etc.)
+      proxy-handler.ts     — Fastify routes for connect/subscribe/rpc proxy
+    api/                   — REST API
+      matches.ts           — Match CRUD routes
+      boards.ts            — Board routes
+    db/
+      schema.ts            — Drizzle table definitions
+      database.ts          — DB access layer (Drizzle + pg)
+      types.ts             — IDatabase async interface
+      mock-database.ts     — In-memory mock for tests
+    ws/
+      protocol.ts          — Message type definitions + parsing
+  tests/
+    engine/
+      auction.test.ts      — Auction validation tests
+      play.test.ts         — Play validation + trick flow tests
+    ws/
+      protocol.test.ts     — Message parsing tests
+  Dockerfile               — Backend multi-stage build
+  package.json             — Backend dependencies and scripts
+  tsconfig.json
+  vitest.config.ts
+  drizzle.config.ts
 centrifugo/
-  config.json            — Centrifugo configuration
-example.env              — Env var template (cp to .env, fill secrets)
-docker-compose.yml       — Local 5-service stack (nginx, backend, centrifugo, redis, postgres)
-Dockerfile               — Backend multi-stage build
+  config.json              — Centrifugo configuration
 nginx/
-  nginx.conf             — Reverse proxy config
+  nginx.conf               — Reverse proxy config
+example.env                — Env var template (cp to .env, fill secrets)
+docker-compose.yml         — Local 5-service stack
+package.json               — Root scripts (stack, stack:down)
 ```
 
 ## Environment Variables

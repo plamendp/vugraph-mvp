@@ -10,7 +10,7 @@ services:
       - centrifugo
 
   backend:
-    build: .
+    build: ./api
     ports:
       - "3000:3000"
     environment:

@@ -54,7 +54,7 @@ Web-based vugraph system for broadcasting contract bridge matches in real time.
 
 The application code is identical in local and cloud deployments. Only the outer routing layer differs (nginx vs ALB/CloudFront). Centrifugo + Redis run as the same Docker images in both environments.
 
-### Local (Docker Compose — 7 containers)
+### Local (Docker Compose — 5 containers)
 
 ```
 Client (browser)
@@ -62,8 +62,6 @@ Client (browser)
   nginx (:80)
     |-- /api/*                    --> backend (:3000)
     |-- /connection/websocket     --> centrifugo (:8000)
-    |-- /operator/*               --> operator-client (:5001)
-    |-- /spectator/*              --> spectator-client (:5002)
 
   centrifugo (:8000)
         |
@@ -98,37 +96,40 @@ ALB / CloudFront
 
 ### How Real-Time Works (Centrifugo Proxy Pattern)
 
-1. Client connects to Centrifugo via WebSocket
-2. Centrifugo calls **connect proxy** → backend authenticates, returns user ID + role
+1. Client connects to Centrifugo via WebSocket, passing JWT in `data.token`
+2. Centrifugo calls **connect proxy** → backend verifies JWT, returns user ID + roles
 3. Client subscribes to channel `match:{id}` → Centrifugo calls **subscribe proxy** → backend authorizes
-4. Operator sends bid/play via **RPC** → Centrifugo calls **RPC proxy** → backend validates with match engine
+4. Operator sends bid/play via **RPC** → Centrifugo calls **RPC proxy** → backend checks user has operator/admin role, validates with match engine
 5. Backend publishes state updates to Centrifugo HTTP API → Centrifugo fans out to all subscribers
 
 **The backend never holds WebSocket connections.** It only receives HTTP proxy calls from Centrifugo and publishes back via Centrifugo's HTTP API.
 
 ### Data Ownership
 - **Redis** (Centrifugo's concern): pub/sub fanout, channel presence, message history. If Redis dies, clients reconnect.
-- **Postgres** (our concern): matches, boards, scores — all persistent domain data.
+- **Postgres** (our concern): matches, boards, users, roles, scores — all persistent domain data.
 
 ## Commands
 
 From project root:
 - `npm run stack` — build and start full local Docker stack
 - `npm run stack:down` — stop local stack
+- `npm run db:seed` — seed admin user (sources .env, connects to Postgres on localhost:5432)
 
 From `api/`:
 - `npm run dev` — start backend dev server only (tsx, needs Postgres/Centrifugo running)
 - `npm test` — run tests (vitest)
 - `npm run test:watch` — run tests in watch mode
-- `npm run db:seed` — seed admin user (needs DATABASE_URL)
+- `npm run db:seed` — seed admin user (needs DATABASE_URL env var)
 - `npx tsc --noEmit` — type-check without emitting
+
+**Seeding workflow**: start the stack first (`npm run stack`), then in another terminal run `npm run db:seed` from the project root. Optionally set `SEED_ADMIN_PASSWORD=<password>` (defaults to "admin").
 
 ## Project Structure
 
 ```
 api/                       — Backend service
   src/
-    server.ts              — Entry point (Fastify HTTP setup + Centrifugo proxy routes)
+    server.ts              — Entry point (Fastify setup, auth hook, all routes)
     config.ts              — All config from environment variables
     engine/                — Match engine (pure logic, no I/O)
       types.ts             — All types and constants
@@ -142,11 +143,11 @@ api/                       — Backend service
       proxy-handler.ts     — Fastify routes for connect/subscribe/rpc proxy
     auth/                  — Authentication & authorization
       types.ts             — RoleName, User, JwtPayload types
-      password.ts          — bcrypt hash/verify
-      jwt.ts               — JWT sign/verify (HMAC with CENTRIFUGO_TOKEN_SECRET)
+      password.ts          — bcrypt hash/verify (10 salt rounds)
+      jwt.ts               — JWT sign/verify (HMAC with CENTRIFUGO_TOKEN_SECRET, 24h expiry)
       middleware.ts         — Global JWT hook + requireRole preHandler
     api/                   — REST API
-      auth.ts              — Login, register, me routes
+      auth.ts              — Login, register (admin-only), me routes
       matches.ts           — Match CRUD routes (write ops: admin/operator only)
       boards.ts            — Board routes (write ops: admin/operator only)
     db/
@@ -160,16 +161,16 @@ api/                       — Backend service
       protocol.ts          — Message type definitions + parsing
   tests/
     engine/
-      auction.test.ts      — Auction validation tests
-      play.test.ts         — Play validation + trick flow tests
+      auction.test.ts      — Auction validation tests (28)
+      play.test.ts         — Play validation + trick flow tests (15)
     auth/
-      auth.test.ts         — Password, JWT, auth flow tests
+      auth.test.ts         — Password, JWT, auth flow tests (13)
     ws/
-      protocol.test.ts     — Message parsing tests
+      protocol.test.ts     — Message parsing tests (12)
   Dockerfile               — Backend multi-stage build
   package.json             — Backend dependencies and scripts
   tsconfig.json
-  vitest.config.ts
+  vitest.config.ts         — Test config (includes env vars for tests)
   drizzle.config.ts
 centrifugo/
   config.json              — Centrifugo configuration
@@ -177,7 +178,7 @@ nginx/
   nginx.conf               — Reverse proxy config
 example.env                — Env var template (cp to .env, fill secrets)
 docker-compose.yml         — Local 5-service stack
-package.json               — Root scripts (stack, stack:down)
+package.json               — Root scripts (stack, stack:down, db:seed)
 ```
 
 ## Environment Variables
@@ -188,13 +189,51 @@ Docker Compose reads `.env` automatically and injects vars into containers.
 Backend env vars (in `src/config.ts`):
 - `PORT` — server port (default: 3000)
 - `HOST` — bind address (default: 0.0.0.0)
-- `LOCAL_DEV` — `true` when running via Docker Compose (hardcoded in docker-compose.yml)
+- `LOCAL_DEV` — `true` when running via Docker Compose (hardcoded in docker-compose.yml, NOT in .env)
 - `DATABASE_URL` — Postgres connection string (required, constructed from POSTGRES_* vars in compose)
 - `CENTRIFUGO_API_URL` — Centrifugo HTTP API endpoint (default: http://localhost:8000/api)
 - `CENTRIFUGO_API_KEY` — API key for Centrifugo server API (required)
 - `CENTRIFUGO_TOKEN_SECRET` — HMAC secret shared with Centrifugo for JWT signing (required)
 
-See `example.env` for the full list including Postgres and Centrifugo admin vars.
+.env vars (not backend config, used by Docker Compose):
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` — Postgres credentials
+- `CENTRIFUGO_ADMIN_PASSWORD`, `CENTRIFUGO_ADMIN_SECRET` — Centrifugo admin UI
+
+See `example.env` for the full template.
+
+## Authentication & Authorization
+
+### Auth Flow
+1. Admin seeds initial user: `npm run db:seed` (creates "admin" user)
+2. Admin registers more users: `POST /api/auth/register` (admin-only)
+3. User logs in: `POST /api/auth/login` → receives JWT
+4. JWT passed as `Authorization: Bearer <token>` for REST API
+5. JWT passed in `data.token` for Centrifugo WebSocket connection
+
+### Routes
+- `POST /api/auth/login` — public, returns JWT + user info
+- `POST /api/auth/register` — admin-only, creates user with specified roles
+- `GET /api/auth/me` — any authenticated user, returns own info
+
+### Public Paths (no auth required)
+- `POST /api/auth/login`
+- `GET /api/health`
+- `/centrifugo/*` (Centrifugo proxy paths — they verify JWT themselves)
+
+### Role Guards
+- **Read operations** (GET matches, boards): any authenticated user
+- **Write operations** (POST/PATCH/DELETE matches, POST boards): admin or operator
+- **Register users**: admin only
+- **Centrifugo RPC** (load_board, call, play, undo, set_result): admin or operator (checked via DB role lookup)
+
+### Implementation Details
+- Global `onRequest` hook (`registerAuthHook`) verifies JWT on every request except public paths
+- `requireRole(...roles)` returns a Fastify `preHandler` that checks `req.user.roles`
+- `req.user` is decorated on FastifyRequest via TypeScript declaration merge
+- Centrifugo connect proxy verifies JWT from `data.token`, returns user ID as string
+- Centrifugo RPC proxy looks up user roles from DB by parsed user ID
+- Four roles seeded at DB init: admin, operator, spectator, commentator
+- `jsonwebtoken` type collision: `verifyToken` uses `as unknown as JwtPayload` cast because jsonwebtoken exports its own `JwtPayload` type
 
 ## Current Status
 
@@ -205,20 +244,20 @@ See `example.env` for the full list including Postgres and Centrifugo admin vars
 - Role-based access control: admin, operator, spectator, commentator
 - Auth routes: login, register (admin-only), me
 - Role guards on write operations (matches, boards, Centrifugo RPC)
-- Centrifugo connect proxy uses JWT verification (no more OPERATOR_TOKEN)
+- Centrifugo connect proxy uses JWT verification
 - Drizzle ORM for Postgres (src/db/schema.ts + database.ts)
 - Centrifugo proxy integration (src/centrifugo/ — connect, subscribe, RPC handlers)
 - WebSocket protocol and message type definitions (src/ws/protocol.ts)
 - Docker infrastructure: 5 services (nginx, backend, centrifugo, redis, postgres)
 - .env-based secrets management with example.env template
-- Admin seed script (npm run db:seed)
+- Admin seed script (npm run db:seed — runs from host against containerized Postgres)
 - 68 tests, all passing
 
+**Next up: Frontend clients** (see "Frontend Architecture" section below)
+
 **Not yet implemented:**
-- Operator client UI (React SPA)
-- Spectator client UI (React SPA)
+- Frontend clients (operator, spectator — see below)
 - File import (.pbn, .dup, .lin)
-- Commentary system
 - AWS deployment
 
 ## Decisions Made
@@ -226,8 +265,62 @@ See `example.env` for the full list including Postgres and Centrifugo admin vars
 - **ORM**: Drizzle ORM (TypeScript-native, lightweight, SQL-like)
 - **WebSocket broker**: Centrifugo v6 (proxy pattern — backend stays pure HTTP)
 - **Redis**: Used by Centrifugo for pub/sub + presence + history; backend does NOT use Redis directly
-- **Auth**: JWT using CENTRIFUGO_TOKEN_SECRET as shared HMAC secret; bcrypt for password hashing; 24h token expiry; no refresh tokens (MVP)
-- **Testing strategy**: IDatabase interface + in-memory mock for unit tests; engine/protocol tests unchanged
+- **Auth**: JWT using CENTRIFUGO_TOKEN_SECRET as shared HMAC secret (single secret for both REST auth and Centrifugo client auth); bcrypt for password hashing; 24h token expiry; no refresh tokens (MVP)
+- **Host-to-container tooling**: npm scripts in root package.json source .env and connect to localhost-exposed ports (e.g., db:seed connects to Postgres on localhost:5432)
+- **Testing strategy**: IDatabase interface + in-memory mock for unit tests; vitest.config.ts sets required env vars (DATABASE_URL, CENTRIFUGO_TOKEN_SECRET, CENTRIFUGO_API_KEY) so config.ts doesn't throw during test imports
+- **LOCAL_DEV**: Hardcoded `LOCAL_DEV=true` in docker-compose.yml, NOT in .env (it's always true under Docker Compose)
+- **No default secrets**: All sensitive config uses `requireEnv()` which throws if the env var is missing — no fallback defaults for secrets
+
+## Frontend Architecture (pending — next task)
+
+**Decision needed**: exact tech choices (React framework, styling). Structure is decided:
+
+### Recommended: Monorepo — shared package + 2 apps
+
+```
+packages/ui/               — Shared component library
+  cards, hands, board display, auction box, trick display,
+  Centrifugo client wrapper, auth helpers (login, token storage)
+
+apps/operator/             — Operator + Admin app
+  Login → match list → board input UI (speed-optimized)
+  Admin views: user management, match CRUD
+  Role gate: admin or operator required
+
+apps/spectator/            — Spectator + Commentator app
+  Login → match list → live board display (visual polish)
+  Commentator: same view + text commentary input
+  Role gate: any authenticated user; commentator features if role present
+```
+
+### Why 2 apps, not 4
+- **Admin** is rarely used, low-traffic (just forms) → fits in operator app
+- **Commentator** is spectator + a text input → fits in spectator app
+- Role determines which features are visible within each app
+
+### Why not 1 single SPA
+- Operator UI (speed-optimized input, minimal chrome) and spectator UI (polished read-only display) have fundamentally different design priorities
+- Separate builds = smaller bundles per role
+- Independent deployment (update operator without touching spectator)
+
+### Shared via `packages/ui`
+- Card/hand/board rendering components
+- Auction box, trick display
+- Centrifugo WebSocket client (connect with JWT, subscribe to match channel, handle events)
+- Auth helpers (login API call, JWT storage, role checks)
+- Bridge domain types (re-exported from api or duplicated as needed)
+
+### Docker Compose integration
+When implemented, operator and spectator apps will be added as dev containers with nginx routing:
+- `/operator/*` → operator app (:5001)
+- `/spectator/*` → spectator app (:5002)
+
+## User Preferences
+
+- **Be proactive**: Always create/update CLAUDE.md without being asked. Don't wait for reminders.
+- **Don't start the stack**: User prefers to start Docker stack themselves. Don't run `npm run stack` without permission.
+- **Safe tokens**: Never hardcode default values for secrets in config. Use `requireEnv()` to fail fast.
+- **Short responses**: Keep explanations concise unless detail is requested.
 
 ## Key Conventions
 

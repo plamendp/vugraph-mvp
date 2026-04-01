@@ -16,11 +16,12 @@ services:
     environment:
       - PORT=3000
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://vugraph:vugraph@postgres:5432/vugraph
-      - OPERATOR_TOKEN=operator-secret
+      - LOCAL_DEV=true
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - OPERATOR_TOKEN=${OPERATOR_TOKEN}
       - CENTRIFUGO_API_URL=http://centrifugo:8000/api
-      - CENTRIFUGO_API_KEY=centrifugo-api-key
-      - CENTRIFUGO_TOKEN_SECRET=centrifugo-token-secret
+      - CENTRIFUGO_API_KEY=${CENTRIFUGO_API_KEY}
+      - CENTRIFUGO_TOKEN_SECRET=${CENTRIFUGO_TOKEN_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,6 +35,11 @@ services:
       - ./centrifugo/config.json:/centrifugo/config.json:ro
     ports:
       - "8000:8000"
+    environment:
+      - CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY=${CENTRIFUGO_TOKEN_SECRET}
+      - CENTRIFUGO_HTTP_API_KEY=${CENTRIFUGO_API_KEY}
+      - CENTRIFUGO_ADMIN_PASSWORD=${CENTRIFUGO_ADMIN_PASSWORD}
+      - CENTRIFUGO_ADMIN_SECRET=${CENTRIFUGO_ADMIN_SECRET}
     ulimits:
       nofile:
         soft: 65535
@@ -53,13 +59,13 @@ services:
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=vugraph
-      - POSTGRES_PASSWORD=vugraph
-      - POSTGRES_DB=vugraph
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vugraph"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 2s
       timeout: 5s
       retries: 10

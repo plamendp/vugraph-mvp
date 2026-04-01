@@ -1,7 +1,7 @@
 {
   "client": {
     "token": {
-      "hmac_secret_key": "centrifugo-token-secret"
+      "hmac_secret_key": ""
     },
     "allowed_origins": ["http://localhost", "http://localhost:80"]
   },
@@ -17,7 +17,7 @@
     ]
   },
   "http_api": {
-    "key": "centrifugo-api-key"
+    "key": ""
   },
   "proxy": {
     "connect": {
@@ -51,7 +51,7 @@
   "log_level": "info",
   "admin": {
     "enabled": true,
-    "password": "admin",
-    "secret": "admin-secret"
+    "password": "",
+    "secret": ""
   }
 }

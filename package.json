@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "stack": "docker compose up --build",
-    "stack:down": "docker compose down"
+    "stack:down": "docker compose down",
+    "db:seed": "sh -c '. ./.env && DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB} npm --prefix api run db:seed'"
   }
 }

@@ -1,19 +1,19 @@
 import type { FastifyInstance } from "fastify";
-import type { DB } from "../db/database.js";
+import type { IDatabase } from "../db/types.js";
 import type { Card, Seat, Vulnerability } from "../engine/types.js";
 
-export function boardRoutes(app: FastifyInstance, db: DB): void {
+export function boardRoutes(app: FastifyInstance, db: IDatabase): void {
   app.get<{ Params: { matchId: string } }>(
     "/api/matches/:matchId/boards",
-    (req, reply) => {
-      reply.send(db.listBoards(req.params.matchId));
+    async (req, reply) => {
+      reply.send(await db.listBoards(req.params.matchId));
     },
   );
 
   app.get<{ Params: { matchId: string; boardNumber: string } }>(
     "/api/matches/:matchId/boards/:boardNumber",
-    (req, reply) => {
-      const board = db.getBoard(req.params.matchId, parseInt(req.params.boardNumber, 10));
+    async (req, reply) => {
+      const board = await db.getBoard(req.params.matchId, parseInt(req.params.boardNumber, 10));
       if (!board) {
         reply.code(404).send({ error: "Board not found" });
         return;
@@ -30,9 +30,9 @@ export function boardRoutes(app: FastifyInstance, db: DB): void {
       vulnerability: Vulnerability;
       hands: Record<Seat, Card[]>;
     };
-  }>("/api/matches/:matchId/boards", (req, reply) => {
+  }>("/api/matches/:matchId/boards", async (req, reply) => {
     const { boardNumber, dealer, vulnerability, hands } = req.body;
-    db.saveBoard({
+    await db.saveBoard({
       matchId: req.params.matchId,
       boardNumber,
       dealer,
@@ -43,7 +43,7 @@ export function boardRoutes(app: FastifyInstance, db: DB): void {
       play: [],
       tricks: [],
     });
-    const board = db.getBoard(req.params.matchId, boardNumber);
+    const board = await db.getBoard(req.params.matchId, boardNumber);
     reply.code(201).send(board);
   });
 }

@@ -5,21 +5,21 @@ CREATE TABLE IF NOT EXISTS matches (
   home_team TEXT NOT NULL,
   away_team TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS boards (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
   board_number INTEGER NOT NULL,
   dealer TEXT NOT NULL,
   vulnerability TEXT NOT NULL,
-  hands TEXT NOT NULL,
-  auction TEXT NOT NULL DEFAULT '[]',
-  play TEXT NOT NULL DEFAULT '[]',
-  contract TEXT,
+  hands JSONB NOT NULL,
+  auction JSONB NOT NULL DEFAULT '[]',
+  play JSONB NOT NULL DEFAULT '[]',
+  contract JSONB,
   declarer TEXT,
-  result TEXT,
+  result JSONB,
   phase TEXT NOT NULL DEFAULT 'setup',
   UNIQUE(match_id, board_number)
 );

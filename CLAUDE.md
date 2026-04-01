@@ -126,7 +126,8 @@ src/
     boards.ts            — Board routes
   db/
     schema.sql           — Postgres schema
-    database.ts          — DB access layer (Postgres)
+    types.ts             — IDatabase async interface
+    database.ts          — DB access layer (pg.Pool, implements IDatabase)
 tests/
   engine/
     auction.test.ts      — Auction validation tests
@@ -149,26 +150,57 @@ All configuration is via env vars (defaults in `src/config.ts`):
 
 ## Current Status
 
-**Implemented (Phase 1 backend — needs migration):**
-- Match engine with full auction + play validation, undo support, scoring
-- REST API for match/board CRUD
+**Implemented:**
+- Match engine with full auction + play validation, undo support, scoring (src/engine/ — pure logic, no I/O)
+- REST API for match/board CRUD (src/api/)
 - 55 tests, all passing
-- Currently uses SQLite + in-memory ws — to be migrated to Postgres + Redis + HTTP-based ws
+- WebSocket protocol and message parsing (src/ws/protocol.ts)
 
-**Next: Dockerization**
-- Docker Compose with 7 containers (nginx, backend, ws-gateway-sim, redis, postgres, operator-client, spectator-client)
-- Migrate SQLite to Postgres
-- Migrate in-memory RoomManager to Redis
-- Replace ws-based WebSocket handler with HTTP route handlers
-- Build ws-gateway-sim container
-- Build operator-client and spectator-client React containers
+**Dockerization — IN PROGRESS (Phase 1 of 4):**
+
+Phase 1 (DB migration) — partially done:
+- [x] `src/db/types.ts` — `IDatabase` async interface created
+- [x] `src/db/schema.sql` — converted to Postgres syntax (SERIAL, TIMESTAMPTZ, JSONB)
+- [x] `src/db/database.ts` — rewritten from better-sqlite3 (sync) to pg.Pool (async), implements IDatabase
+- [x] `src/config.ts` — added DATABASE_URL, REDIS_URL, WS_GATEWAY_CALLBACK_URL, LOCAL_DEV; removed DB_PATH
+- [x] `src/api/matches.ts` — async handlers, imports IDatabase
+- [x] `src/api/boards.ts` — async handlers, imports IDatabase
+- [ ] Swap better-sqlite3 → pg in package.json
+- [ ] Create mock database for tests (src/db/mock-database.ts)
+- [ ] Update server.ts (combined with Phase 2)
+
+Phase 2 (WS migration) — not started:
+- [ ] Rewrite src/ws/rooms.ts — Redis-backed RoomManager (ioredis), connectionId-based
+- [ ] Rewrite src/ws/handler.ts — connectionId instead of WebSocket objects, async
+- [ ] Rewrite src/server.ts — remove ws library, add POST /ws/connect, /ws/disconnect, /ws/message routes
+- [ ] Swap ws → ioredis in package.json
+
+Phase 3 (Docker infrastructure) — not started:
+- [ ] Dockerfile (backend, multi-stage)
+- [ ] ws-gateway-sim/ (Node.js container, ~120 lines, uses ws library)
+- [ ] operator-client/ (Vite + React-TS placeholder)
+- [ ] spectator-client/ (Vite + React-TS placeholder)
+- [ ] nginx/nginx.conf (reverse proxy)
+- [ ] docker-compose.yml (7 services)
+
+Phase 4 (Testing & polish) — not started:
+- [ ] Verify all tests pass
+- [ ] Add docker:up, docker:down npm scripts
 
 **Not yet implemented:**
-- Operator client (React SPA)
-- Spectator client (React SPA)
+- Operator client UI (React SPA — placeholder only in Phase 3)
+- Spectator client UI (React SPA — placeholder only in Phase 3)
 - File import (.pbn, .dup, .lin)
 - Commentary system
 - AWS CDK deployment
+
+## Decisions Made
+
+- **Postgres client**: `pg` (node-postgres) with Pool
+- **Redis client**: `ioredis`
+- **ws-gateway-sim**: Node.js with `ws` library (~120 lines)
+- **Placeholder clients**: Vite + React-TS scaffold
+- **Testing strategy**: IDatabase interface + in-memory mock for unit tests; engine/protocol tests unchanged
 
 ## Key Conventions
 

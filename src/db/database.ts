@@ -1,102 +1,103 @@
-import Database from "better-sqlite3";
+import pg from "pg";
 import { readFileSync } from "node:fs";
-import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { BoardState, Match, MatchStatus } from "../engine/types.js";
+import type { IDatabase } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export class DB {
-  private db: Database.Database;
+export class DB implements IDatabase {
+  private pool: pg.Pool;
 
-  constructor(dbPath: string) {
-    mkdirSync(dirname(dbPath), { recursive: true });
-    this.db = new Database(dbPath);
-    this.db.pragma("journal_mode = WAL");
-    this.db.pragma("foreign_keys = ON");
+  constructor(connectionString: string) {
+    this.pool = new pg.Pool({ connectionString });
+  }
 
+  async init(): Promise<void> {
     const schema = readFileSync(resolve(__dirname, "schema.sql"), "utf-8");
-    this.db.exec(schema);
+    await this.pool.query(schema);
   }
 
   // ── Matches ──
 
-  createMatch(match: Omit<Match, "createdAt">): Match {
-    const stmt = this.db.prepare(
+  async createMatch(match: Omit<Match, "createdAt">): Promise<Match> {
+    await this.pool.query(
       `INSERT INTO matches (id, title, segment, home_team, away_team, status)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [match.id, match.title, match.segment, match.homeTeam, match.awayTeam, match.status],
     );
-    stmt.run(match.id, match.title, match.segment, match.homeTeam, match.awayTeam, match.status);
-    return this.getMatch(match.id)!;
+    return (await this.getMatch(match.id))!;
   }
 
-  getMatch(id: string): Match | null {
-    const row = this.db.prepare("SELECT * FROM matches WHERE id = ?").get(id) as any;
-    if (!row) return null;
-    return rowToMatch(row);
+  async getMatch(id: string): Promise<Match | null> {
+    const { rows } = await this.pool.query("SELECT * FROM matches WHERE id = $1", [id]);
+    if (rows.length === 0) return null;
+    return rowToMatch(rows[0]);
   }
 
-  listMatches(): Match[] {
-    const rows = this.db.prepare("SELECT * FROM matches ORDER BY created_at DESC").all() as any[];
+  async listMatches(): Promise<Match[]> {
+    const { rows } = await this.pool.query("SELECT * FROM matches ORDER BY created_at DESC");
     return rows.map(rowToMatch);
   }
 
-  updateMatchStatus(id: string, status: MatchStatus): void {
-    this.db.prepare("UPDATE matches SET status = ? WHERE id = ?").run(status, id);
+  async updateMatchStatus(id: string, status: MatchStatus): Promise<void> {
+    await this.pool.query("UPDATE matches SET status = $1 WHERE id = $2", [status, id]);
   }
 
-  deleteMatch(id: string): void {
-    this.db.prepare("DELETE FROM matches WHERE id = ?").run(id);
+  async deleteMatch(id: string): Promise<void> {
+    await this.pool.query("DELETE FROM matches WHERE id = $1", [id]);
   }
 
   // ── Boards ──
 
-  saveBoard(board: BoardState): void {
-    const stmt = this.db.prepare(
+  async saveBoard(board: BoardState): Promise<void> {
+    await this.pool.query(
       `INSERT INTO boards (match_id, board_number, dealer, vulnerability, hands, auction, play, contract, declarer, result, phase)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT(match_id, board_number) DO UPDATE SET
-         hands = excluded.hands,
-         auction = excluded.auction,
-         play = excluded.play,
-         contract = excluded.contract,
-         declarer = excluded.declarer,
-         result = excluded.result,
-         phase = excluded.phase`,
-    );
-    stmt.run(
-      board.matchId,
-      board.boardNumber,
-      board.dealer,
-      board.vulnerability,
-      JSON.stringify(board.hands),
-      JSON.stringify(board.auction),
-      JSON.stringify(board.play),
-      board.contract ? JSON.stringify(board.contract) : null,
-      board.declarer ?? null,
-      board.result ? JSON.stringify(board.result) : null,
-      board.phase,
+         hands = EXCLUDED.hands,
+         auction = EXCLUDED.auction,
+         play = EXCLUDED.play,
+         contract = EXCLUDED.contract,
+         declarer = EXCLUDED.declarer,
+         result = EXCLUDED.result,
+         phase = EXCLUDED.phase`,
+      [
+        board.matchId,
+        board.boardNumber,
+        board.dealer,
+        board.vulnerability,
+        JSON.stringify(board.hands),
+        JSON.stringify(board.auction),
+        JSON.stringify(board.play),
+        board.contract ? JSON.stringify(board.contract) : null,
+        board.declarer ?? null,
+        board.result ? JSON.stringify(board.result) : null,
+        board.phase,
+      ],
     );
   }
 
-  getBoard(matchId: string, boardNumber: number): BoardState | null {
-    const row = this.db
-      .prepare("SELECT * FROM boards WHERE match_id = ? AND board_number = ?")
-      .get(matchId, boardNumber) as any;
-    if (!row) return null;
-    return rowToBoard(row);
+  async getBoard(matchId: string, boardNumber: number): Promise<BoardState | null> {
+    const { rows } = await this.pool.query(
+      "SELECT * FROM boards WHERE match_id = $1 AND board_number = $2",
+      [matchId, boardNumber],
+    );
+    if (rows.length === 0) return null;
+    return rowToBoard(rows[0]);
   }
 
-  listBoards(matchId: string): BoardState[] {
-    const rows = this.db
-      .prepare("SELECT * FROM boards WHERE match_id = ? ORDER BY board_number")
-      .all(matchId) as any[];
+  async listBoards(matchId: string): Promise<BoardState[]> {
+    const { rows } = await this.pool.query(
+      "SELECT * FROM boards WHERE match_id = $1 ORDER BY board_number",
+      [matchId],
+    );
     return rows.map(rowToBoard);
   }
 
-  close(): void {
-    this.db.close();
+  async close(): Promise<void> {
+    await this.pool.end();
   }
 }
 
@@ -108,23 +109,25 @@ function rowToMatch(row: any): Match {
     homeTeam: row.home_team,
     awayTeam: row.away_team,
     status: row.status,
-    createdAt: row.created_at,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
   };
 }
 
 function rowToBoard(row: any): BoardState {
+  // pg auto-parses JSONB columns, but guard in case of TEXT fallback
+  const parse = (val: any) => (typeof val === "string" ? JSON.parse(val) : val);
   return {
     matchId: row.match_id,
     boardNumber: row.board_number,
     dealer: row.dealer,
     vulnerability: row.vulnerability,
-    hands: JSON.parse(row.hands),
+    hands: parse(row.hands),
     phase: row.phase,
-    auction: JSON.parse(row.auction),
-    play: JSON.parse(row.play),
-    tricks: [], // tricks are rebuilt from play entries if needed
-    contract: row.contract ? JSON.parse(row.contract) : undefined,
+    auction: parse(row.auction),
+    play: parse(row.play),
+    tricks: [],
+    contract: row.contract ? parse(row.contract) : undefined,
     declarer: row.declarer ?? undefined,
-    result: row.result ? JSON.parse(row.result) : undefined,
+    result: row.result ? parse(row.result) : undefined,
   };
 }

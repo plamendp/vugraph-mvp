@@ -112,11 +112,11 @@ ALB / CloudFront
 
 ## Commands
 
-- `npm run dev` — start dev server (tsx)
+- `npm run stack` — build and start full local Docker stack
+- `npm run dev` — start backend dev server only (tsx, needs Postgres/Centrifugo running)
 - `npm test` — run tests (vitest)
 - `npm run test:watch` — run tests in watch mode
 - `npx tsc --noEmit` — type-check without emitting
-- `docker compose up` — start full local stack
 - `docker compose down` — stop local stack
 
 ## Project Structure
@@ -151,7 +151,8 @@ tests/
     protocol.test.ts     — Message parsing tests
 centrifugo/
   config.json            — Centrifugo configuration
-docker-compose.yml       — Local 7-container stack
+example.env              — Env var template (cp to .env, fill secrets)
+docker-compose.yml       — Local 5-service stack (nginx, backend, centrifugo, redis, postgres)
 Dockerfile               — Backend multi-stage build
 nginx/
   nginx.conf             — Reverse proxy config
@@ -159,29 +160,32 @@ nginx/
 
 ## Environment Variables
 
-All configuration is via env vars (defaults in `src/config.ts`):
+Secrets and config are in `.env` (git-ignored). Copy `example.env` to `.env` and fill in values.
+Docker Compose reads `.env` automatically and injects vars into containers.
 
+Backend env vars (in `src/config.ts`):
 - `PORT` — server port (default: 3000)
 - `HOST` — bind address (default: 0.0.0.0)
-- `DATABASE_URL` — Postgres connection string
-- `OPERATOR_TOKEN` — auth token for operator connections
+- `LOCAL_DEV` — `true` when running via Docker Compose (hardcoded in docker-compose.yml)
+- `DATABASE_URL` — Postgres connection string (required, constructed from POSTGRES_* vars in compose)
+- `OPERATOR_TOKEN` — auth token for operator connections (required)
 - `CENTRIFUGO_API_URL` — Centrifugo HTTP API endpoint (default: http://localhost:8000/api)
-- `CENTRIFUGO_API_KEY` — API key for Centrifugo server API
+- `CENTRIFUGO_API_KEY` — API key for Centrifugo server API (required)
+- `CENTRIFUGO_TOKEN_SECRET` — HMAC secret shared with Centrifugo for JWT signing (required)
+
+See `example.env` for the full list including Postgres and Centrifugo admin vars.
 
 ## Current Status
 
 **Implemented:**
 - Match engine with full auction + play validation, undo support, scoring (src/engine/)
 - REST API for match/board CRUD (src/api/ — async, uses IDatabase interface)
-- WebSocket protocol and message parsing (src/ws/protocol.ts)
-- IDatabase async interface (src/db/types.ts)
-- Postgres DB implementation with pg.Pool (src/db/database.ts) — being replaced with Drizzle
+- Drizzle ORM for Postgres (src/db/schema.ts + database.ts)
+- Centrifugo proxy integration (src/centrifugo/ — connect, subscribe, RPC handlers)
+- WebSocket protocol and message type definitions (src/ws/protocol.ts)
+- Docker infrastructure: 5 services (nginx, backend, centrifugo, redis, postgres)
+- .env-based secrets management with example.env template
 - 55 tests, all passing
-
-**In Progress:**
-- Drizzle ORM migration (replacing raw pg queries)
-- Centrifugo integration (replacing ws-based handler)
-- Docker infrastructure
 
 **Not yet implemented:**
 - Operator client UI (React SPA)

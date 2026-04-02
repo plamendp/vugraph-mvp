@@ -1,7 +1,2 @@
-export type RoleName = "admin" | "operator" | "spectator" | "commentator";
-
-export interface UserInfo {
-  id: number;
-  username: string;
-  roles: RoleName[];
-}
+// Single source of truth: @vugraph/types
+export { type RoleName, type UserInfo } from "@vugraph/types/auth";

@@ -1,6 +1,6 @@
-export type RoleName = "admin" | "operator" | "spectator" | "commentator";
-
-export const ALL_ROLES: RoleName[] = ["admin", "operator", "spectator", "commentator"];
+// Single source of truth: @vugraph/types
+import type { RoleName } from "../../../packages/types/src/auth.js";
+export { type RoleName, ALL_ROLES } from "../../../packages/types/src/auth.js";
 
 export interface User {
   id: number;

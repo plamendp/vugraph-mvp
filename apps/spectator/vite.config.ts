@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@vugraph/ui": resolve(__dirname, "../../packages/ui/src"),
+      "@vugraph/types": resolve(__dirname, "../../packages/types/src"),
     },
   },
   server: {

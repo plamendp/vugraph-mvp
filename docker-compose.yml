@@ -18,6 +18,7 @@ services:
     volumes:
       - ./apps/operator/src:/app/apps/operator/src
       - ./packages/ui/src:/app/packages/ui/src
+      - ./packages/types/src:/app/packages/types/src
 
   spectator:
     build: ./apps/spectator
@@ -26,9 +27,12 @@ services:
     volumes:
       - ./apps/spectator/src:/app/apps/spectator/src
       - ./packages/ui/src:/app/packages/ui/src
+      - ./packages/types/src:/app/packages/types/src
 
   backend:
-    build: ./api
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     ports:
       - "3000:3000"
     environment:

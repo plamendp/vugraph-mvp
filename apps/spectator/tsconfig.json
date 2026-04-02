@@ -12,8 +12,9 @@
     "skipLibCheck": true,
     "paths": {
       "@vugraph/ui": ["../../packages/ui/src/index.ts"],
-      "@vugraph/ui/*": ["../../packages/ui/src/*"]
+      "@vugraph/ui/*": ["../../packages/ui/src/*"],
+      "@vugraph/types/*": ["../../packages/types/src/*"]
     }
   },
-  "include": ["src", "../../packages/ui/src"]
+  "include": ["src", "../../packages/ui/src", "../../packages/types/src"]
 }

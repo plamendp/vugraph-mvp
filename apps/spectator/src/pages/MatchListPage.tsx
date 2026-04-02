@@ -1,24 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth, apiFetch } from "@vugraph/ui";
-
-interface MatchEntry {
-  id: string;
-  title: string;
-  homeTeam: string;
-  awayTeam: string;
-  status: string;
-  createdAt: string;
-}
+import type { Match } from "@vugraph/types/engine";
 
 export function MatchListPage() {
   const { user, logout } = useAuth();
-  const [matches, setMatches] = useState<MatchEntry[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const fetchMatches = useCallback(async () => {
     try {
-      const data = await apiFetch<MatchEntry[]>("/api/matches");
+      const data = await apiFetch<Match[]>("/api/matches");
       setMatches(data);
     } catch (err: any) {
       setError(err.message);

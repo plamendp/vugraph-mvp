@@ -1,12 +1,8 @@
 import { useState, useEffect, useCallback, type FormEvent } from "react";
-import { useAuth, apiFetch, type RoleName } from "@vugraph/ui";
+import { useAuth, apiFetch } from "@vugraph/ui";
+import { type RoleName, ALL_ROLES, type UserInfo } from "@vugraph/types/auth";
 
-const ALL_ROLES: RoleName[] = ["admin", "operator", "spectator", "commentator"];
-
-interface UserEntry {
-  id: number;
-  username: string;
-  roles: RoleName[];
+interface UserEntry extends UserInfo {
   createdAt: string;
 }
 

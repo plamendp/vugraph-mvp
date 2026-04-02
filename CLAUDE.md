@@ -134,7 +134,7 @@ api/                       — Backend service
     server.ts              — Entry point (Fastify setup, auth hook, all routes)
     config.ts              — All config from environment variables
     engine/                — Match engine (pure logic, no I/O)
-      types.ts             — All types and constants
+      types.ts             — Re-exports from packages/types (relative import)
       card-utils.ts        — Card/bid parsing, seat helpers, vulnerability lookup
       auction.ts           — Auction validation and contract determination
       play.ts              — Play validation and trick winner logic
@@ -144,7 +144,7 @@ api/                       — Backend service
       client.ts            — HTTP client for Centrifugo server API (publish, etc.)
       proxy-handler.ts     — Fastify routes for connect/subscribe/rpc proxy
     auth/                  — Authentication & authorization
-      types.ts             — RoleName, User, JwtPayload types
+      types.ts             — Re-exports RoleName/ALL_ROLES from packages/types; local User, JwtPayload
       password.ts          — bcrypt hash/verify (10 salt rounds)
       jwt.ts               — JWT sign/verify (HMAC with CENTRIFUGO_TOKEN_SECRET, 24h expiry)
       middleware.ts         — Global JWT hook + requireRole preHandler
@@ -180,6 +180,13 @@ nginx/
   nginx.conf               — Reverse proxy config
 example.env                — Env var template (cp to .env, fill secrets)
 packages/
+  types/                   — Shared pure types and constants (@vugraph/types)
+    src/
+      index.ts             — Barrel export
+      engine.ts            — Domain types: Seat, Card, Match, BoardState, etc. + constants
+      auth.ts              — RoleName, ALL_ROLES, UserInfo
+    package.json
+    tsconfig.json
   ui/                      — Shared frontend library (@vugraph/ui)
     src/
       index.ts             — Barrel export
@@ -187,7 +194,7 @@ packages/
         api.ts             — Fetch wrapper (Bearer token, configurable 401 redirect)
         AuthContext.tsx     — Auth state (user, token, login, logout)
         ProtectedRoute.tsx — Redirect if not authenticated / wrong role
-        types.ts           — RoleName, UserInfo types
+        types.ts           — Re-exports from @vugraph/types/auth
     package.json           — Peer deps: react, react-router-dom
     tsconfig.json
 apps/
@@ -202,8 +209,8 @@ apps/
     Dockerfile             — Vite dev server container (local dev)
     Dockerfile.deploy      — Multi-stage production build (nginx + static)
     package.json
-    vite.config.ts         — base: /operator/, alias @vugraph/ui, port 5001
-    tsconfig.json          — paths: @vugraph/ui → ../../packages/ui/src
+    vite.config.ts         — base: /operator/, aliases @vugraph/ui + @vugraph/types, port 5001
+    tsconfig.json          — paths: @vugraph/ui, @vugraph/types
   spectator/               — Spectator + Commentator frontend (React + Vite)
     src/
       main.tsx             — Entry point (configureAuth, BrowserRouter, AuthProvider)
@@ -215,10 +222,10 @@ apps/
     Dockerfile             — Vite dev server container (local dev)
     Dockerfile.deploy      — Multi-stage production build (nginx + static)
     package.json
-    vite.config.ts         — base: /spectator/, alias @vugraph/ui, port 5002
-    tsconfig.json          — paths: @vugraph/ui → ../../packages/ui/src
+    vite.config.ts         — base: /spectator/, aliases @vugraph/ui + @vugraph/types, port 5002
+    tsconfig.json          — paths: @vugraph/ui, @vugraph/types
 scripts/
-  prepare-build.sh         — Copies packages/ui into app for isolated Docker builds
+  prepare-build.sh         — Copies packages/ui + packages/types into app for isolated Docker builds
 docker-compose.yml         — Local 7-service stack
 package.json               — Root scripts (stack, stack:down, db:seed)
 ```
@@ -293,7 +300,8 @@ See `example.env` for the full template.
 - WebSocket protocol and message type definitions (src/ws/protocol.ts)
 - Admin frontend (apps/operator/) — login page, user management (list + create with roles)
 - Spectator frontend (apps/spectator/) — login page, match list (commentator role detected)
-- Shared UI package (packages/ui/) — auth context, protected route, API fetch wrapper, types
+- Shared types package (packages/types/) — domain types, auth types, constants (single source of truth)
+- Shared UI package (packages/ui/) — auth context, protected route, API fetch wrapper
 - Docker infrastructure: 7 services (nginx, backend, centrifugo, redis, postgres, operator, spectator)
 - .env-based secrets management with example.env template
 - Admin seed script (npm run db:seed — runs from host against containerized Postgres)
@@ -318,16 +326,22 @@ See `example.env` for the full template.
 - **LOCAL_DEV**: Hardcoded `LOCAL_DEV=true` in docker-compose.yml, NOT in .env (it's always true under Docker Compose)
 - **No default secrets**: All sensitive config uses `requireEnv()` which throws if the env var is missing — no fallback defaults for secrets
 - **Frontend**: React + Vite + TypeScript, plain CSS (MVP). JWT in localStorage (acceptable for internal tool).
-- **Code sharing**: TypeScript path aliases (`@vugraph/ui` → `../../packages/ui/src`), no npm workspaces/symlinks. Each app's tsconfig + vite.config resolves the alias via named import (`import { resolve } from "path"`). `packages/ui/` has its own `node_modules` with React types so TypeScript resolves correctly. For deployment, `scripts/prepare-build.sh` copies shared code into the app dir so Docker can build with per-app context. Deployment Dockerfiles (`Dockerfile.deploy`) exist but need further tuning when AWS CDK work begins.
+- **Code sharing**: Two shared packages — `packages/types/` (pure types + constants, no deps) and `packages/ui/` (React components). TypeScript path aliases (`@vugraph/types/*`, `@vugraph/ui`), no npm workspaces/symlinks. Each consumer's tsconfig + vite.config resolves aliases. `packages/ui/` has its own `node_modules` with React types so TypeScript resolves correctly. For deployment, `scripts/prepare-build.sh` copies both packages into the app dir so Docker can build with per-app context.
+- **Backend module resolution**: `bundler` (not `NodeNext`). The api runs through `tsx` for dev, which handles resolution transparently. This avoids mandatory `.js` extensions. Existing `.js` import extensions are harmless and work fine with `bundler`. The api uses **relative paths** (not path aliases) to import from `packages/types/` because `tsc` doesn't rewrite path aliases in emitted JavaScript — relative paths work correctly at both compile time and runtime.
 
 ## Frontend Architecture
 
-### Structure: 2 apps + shared package
+### Structure: 2 apps + 2 shared packages
 
 ```
-packages/ui/               — Shared component library (@vugraph/ui)
+packages/types/            — Shared pure types + constants (@vugraph/types)
+  Domain: Seat, Card, Match, BoardState, etc.
+  Auth: RoleName, ALL_ROLES, UserInfo
+  No dependencies — consumed by both api/ and frontend apps
+
+packages/ui/               — Shared React component library (@vugraph/ui)
   Auth helpers (AuthContext, ProtectedRoute, apiFetch, configureAuth)
-  Types (RoleName, UserInfo)
+  Re-exports types from @vugraph/types
   Later: card/board components, Centrifugo client wrapper
 
 apps/operator/             — Operator + Admin app
@@ -353,12 +367,14 @@ apps/spectator/            — Spectator + Commentator app
 
 ### Code Sharing Approach
 - **No npm workspaces, no symlinks** — pure TypeScript path aliases
-- Each app's `tsconfig.json`: `"paths": { "@vugraph/ui": ["../../packages/ui/src/index.ts"] }`
-- Each app's `vite.config.ts`: `resolve.alias: { "@vugraph/ui": path.resolve(__dirname, "../../packages/ui/src") }`
+- Two shared packages: `@vugraph/types` (pure types/constants) and `@vugraph/ui` (React components)
+- Each consumer's `tsconfig.json`: `"paths": { "@vugraph/types/*": ["../../packages/types/src/*"], "@vugraph/ui": ["../../packages/ui/src/index.ts"] }`
+- Each consumer's `vite.config.ts`: `resolve.alias` for both `@vugraph/types` and `@vugraph/ui`
+- `api/` uses relative paths (`../../../packages/types/src/...`) instead of path aliases (tsc doesn't rewrite aliases in emitted JS)
 - `packages/ui/` has its own `node_modules` with React types (devDependencies) so TypeScript resolves types correctly
-- `tsconfig.json` `include` covers both `src` and `../../packages/ui/src`
-- **Local dev**: Vite resolves alias at runtime; Docker mounts both `app/src` and `packages/ui/src` as volumes
-- **Deployment**: `scripts/prepare-build.sh <app>` copies `packages/ui/` → `apps/<app>/_shared/ui/`. `Dockerfile.deploy` COPYs it to `/app/packages/ui/` so the alias resolves. Build context is just the app dir. `_shared/` is gitignored.
+- `tsconfig.json` `include` covers `src`, `../../packages/ui/src`, and `../../packages/types/src`
+- **Local dev**: Vite resolves aliases at runtime; Docker mounts `app/src`, `packages/ui/src`, and `packages/types/src` as volumes
+- **Deployment**: `scripts/prepare-build.sh <app>` copies both `packages/ui/` and `packages/types/` → `apps/<app>/_shared/`. `Dockerfile.deploy` COPYs them to `/app/packages/`. Build context is just the app dir. `_shared/` is gitignored.
 
 ### Operator App Details
 - **Vite config**: `base: '/operator/'`, dev server on port 5001

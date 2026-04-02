@@ -9,7 +9,7 @@
 #
 # What it does:
 #   1. Copies packages/ui/src → apps/<app>/_shared/ui/src
-#   2. Generates apps/<app>/vite.config.deploy.ts with local alias
+#   2. Copies packages/types/src → apps/<app>/_shared/types/src
 #   3. Docker build uses: docker build -f Dockerfile.deploy apps/<app>/
 #
 # Clean up:
@@ -21,7 +21,8 @@ APP_NAME="${1:?Usage: prepare-build.sh <operator|spectator>}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 APP_DIR="$REPO_ROOT/apps/$APP_NAME"
-SHARED_DIR="$APP_DIR/_shared/ui"
+SHARED_UI_DIR="$APP_DIR/_shared/ui"
+SHARED_TYPES_DIR="$APP_DIR/_shared/types"
 
 if [ ! -d "$APP_DIR/src" ]; then
   echo "Error: $APP_DIR/src does not exist" >&2
@@ -31,10 +32,14 @@ fi
 # Clean previous
 rm -rf "$APP_DIR/_shared"
 
-# Copy shared package
-mkdir -p "$SHARED_DIR"
-cp -r "$REPO_ROOT/packages/ui/src" "$SHARED_DIR/src"
-cp "$REPO_ROOT/packages/ui/package.json" "$SHARED_DIR/package.json"
+# Copy shared packages
+mkdir -p "$SHARED_UI_DIR"
+cp -r "$REPO_ROOT/packages/ui/src" "$SHARED_UI_DIR/src"
+cp "$REPO_ROOT/packages/ui/package.json" "$SHARED_UI_DIR/package.json"
 
-echo "Prepared $APP_NAME build: shared code copied to $SHARED_DIR"
+mkdir -p "$SHARED_TYPES_DIR"
+cp -r "$REPO_ROOT/packages/types/src" "$SHARED_TYPES_DIR/src"
+cp "$REPO_ROOT/packages/types/package.json" "$SHARED_TYPES_DIR/package.json"
+
+echo "Prepared $APP_NAME build: shared code copied to $APP_DIR/_shared/"
 echo "Build with: docker build -f apps/$APP_NAME/Dockerfile.deploy apps/$APP_NAME/"

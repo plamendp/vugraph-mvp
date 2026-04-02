@@ -59,6 +59,24 @@ export function authRoutes(app: FastifyInstance, db: IDatabase): void {
     },
   );
 
+  // List users — admin only
+  app.get(
+    "/api/auth/users",
+    { preHandler: [requireRole("admin")] },
+    async (_req, reply) => {
+      const allUsers = await db.listUsers();
+      const usersWithRoles = await Promise.all(
+        allUsers.map(async (u) => ({
+          id: u.id,
+          username: u.username,
+          roles: await db.getUserRoles(u.id),
+          createdAt: u.createdAt,
+        })),
+      );
+      return reply.send({ users: usersWithRoles });
+    },
+  );
+
   // Me — any authenticated user
   app.get("/api/auth/me", async (req, reply) => {
     if (!req.user) {

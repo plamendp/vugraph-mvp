@@ -8,6 +8,14 @@ services:
     depends_on:
       - backend
       - centrifugo
+      - operator
+
+  operator:
+    build: ./apps/operator
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./apps/operator/src:/app/src
 
   backend:
     build: ./api

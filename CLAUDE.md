@@ -54,12 +54,13 @@ Web-based vugraph system for broadcasting contract bridge matches in real time.
 
 The application code is identical in local and cloud deployments. Only the outer routing layer differs (nginx vs ALB/CloudFront). Centrifugo + Redis run as the same Docker images in both environments.
 
-### Local (Docker Compose — 5 containers)
+### Local (Docker Compose — 6 containers)
 
 ```
 Client (browser)
     |
   nginx (:80)
+    |-- /operator/*               --> operator (:5001)
     |-- /api/*                    --> backend (:3000)
     |-- /connection/websocket     --> centrifugo (:8000)
 
@@ -177,7 +178,24 @@ centrifugo/
 nginx/
   nginx.conf               — Reverse proxy config
 example.env                — Env var template (cp to .env, fill secrets)
-docker-compose.yml         — Local 5-service stack
+apps/
+  operator/                — Operator + Admin frontend (React + Vite)
+    src/
+      main.tsx             — Entry point (React root, BrowserRouter, AuthProvider)
+      App.tsx              — Routes: /login, /users (protected)
+      api.ts               — Fetch wrapper (Bearer token, 401 handling)
+      styles.css           — MVP styling
+      auth/
+        AuthContext.tsx     — Auth state (user, token, login, logout)
+        ProtectedRoute.tsx — Redirect if not authenticated / wrong role
+      pages/
+        LoginPage.tsx      — Login form
+        UsersPage.tsx      — User list table + create user form
+    Dockerfile             — Vite dev server container
+    package.json
+    vite.config.ts         — base: /operator/, port 5001
+    tsconfig.json
+docker-compose.yml         — Local 6-service stack
 package.json               — Root scripts (stack, stack:down, db:seed)
 ```
 
@@ -213,6 +231,7 @@ See `example.env` for the full template.
 ### Routes
 - `POST /api/auth/login` — public, returns JWT + user info
 - `POST /api/auth/register` — admin-only, creates user with specified roles
+- `GET /api/auth/users` — admin-only, returns all users with roles
 - `GET /api/auth/me` — any authenticated user, returns own info
 
 ### Public Paths (no auth required)
@@ -242,21 +261,21 @@ See `example.env` for the full template.
 - REST API for match/board CRUD (src/api/ — async, uses IDatabase interface)
 - User authentication with JWT + bcrypt (src/auth/)
 - Role-based access control: admin, operator, spectator, commentator
-- Auth routes: login, register (admin-only), me
+- Auth routes: login, register (admin-only), list users (admin-only), me
 - Role guards on write operations (matches, boards, Centrifugo RPC)
 - Centrifugo connect proxy uses JWT verification
 - Drizzle ORM for Postgres (src/db/schema.ts + database.ts)
 - Centrifugo proxy integration (src/centrifugo/ — connect, subscribe, RPC handlers)
 - WebSocket protocol and message type definitions (src/ws/protocol.ts)
-- Docker infrastructure: 5 services (nginx, backend, centrifugo, redis, postgres)
+- Admin frontend (apps/operator/) — login page, user management (list + create with roles)
+- Docker infrastructure: 6 services (nginx, backend, centrifugo, redis, postgres, operator)
 - .env-based secrets management with example.env template
 - Admin seed script (npm run db:seed — runs from host against containerized Postgres)
-- 68 tests, all passing
-
-**Next up: Frontend clients** (see "Frontend Architecture" section below)
+- 69 tests, all passing
 
 **Not yet implemented:**
-- Frontend clients (operator, spectator — see below)
+- Operator board input UI (lives in apps/operator/, admin shell is done)
+- Spectator client UI (apps/spectator/)
 - File import (.pbn, .dup, .lin)
 - AWS deployment
 
@@ -270,27 +289,26 @@ See `example.env` for the full template.
 - **Testing strategy**: IDatabase interface + in-memory mock for unit tests; vitest.config.ts sets required env vars (DATABASE_URL, CENTRIFUGO_TOKEN_SECRET, CENTRIFUGO_API_KEY) so config.ts doesn't throw during test imports
 - **LOCAL_DEV**: Hardcoded `LOCAL_DEV=true` in docker-compose.yml, NOT in .env (it's always true under Docker Compose)
 - **No default secrets**: All sensitive config uses `requireEnv()` which throws if the env var is missing — no fallback defaults for secrets
+- **Frontend**: React + Vite + TypeScript, plain CSS (MVP). No monorepo tooling yet — add npm workspaces when spectator app arrives and shared components actually exist. JWT in localStorage (acceptable for internal admin tool).
 
-## Frontend Architecture (pending — next task)
+## Frontend Architecture
 
-**Decision needed**: exact tech choices (React framework, styling). Structure is decided:
-
-### Recommended: Monorepo — shared package + 2 apps
+### Structure: 2 apps (planned), shared package (later)
 
 ```
-packages/ui/               — Shared component library
-  cards, hands, board display, auction box, trick display,
-  Centrifugo client wrapper, auth helpers (login, token storage)
-
-apps/operator/             — Operator + Admin app
-  Login → match list → board input UI (speed-optimized)
-  Admin views: user management, match CRUD
+apps/operator/             — Operator + Admin app (IMPLEMENTED: admin pages)
+  Login → user management (list + create with roles)
+  Next: match list → board input UI (speed-optimized)
   Role gate: admin or operator required
 
-apps/spectator/            — Spectator + Commentator app
+apps/spectator/            — Spectator + Commentator app (NOT YET IMPLEMENTED)
   Login → match list → live board display (visual polish)
   Commentator: same view + text commentary input
   Role gate: any authenticated user; commentator features if role present
+
+packages/ui/               — Shared component library (NOT YET — add when spectator app arrives)
+  cards, hands, board display, auction box, trick display,
+  Centrifugo client wrapper, auth helpers
 ```
 
 ### Why 2 apps, not 4
@@ -303,17 +321,13 @@ apps/spectator/            — Spectator + Commentator app
 - Separate builds = smaller bundles per role
 - Independent deployment (update operator without touching spectator)
 
-### Shared via `packages/ui`
-- Card/hand/board rendering components
-- Auction box, trick display
-- Centrifugo WebSocket client (connect with JWT, subscribe to match channel, handle events)
-- Auth helpers (login API call, JWT storage, role checks)
-- Bridge domain types (re-exported from api or duplicated as needed)
-
-### Docker Compose integration
-When implemented, operator and spectator apps will be added as dev containers with nginx routing:
-- `/operator/*` → operator app (:5001)
-- `/spectator/*` → spectator app (:5002)
+### Operator App Details
+- **Vite config**: `base: '/operator/'`, dev server on port 5001
+- **Routing**: React Router with `basename="/operator"`. Routes: `/login`, `/users`
+- **Auth**: `AuthContext` provides `{ user, token, login, logout }`. `ProtectedRoute` checks auth + role. Token stored in localStorage as `vugraph_token`.
+- **API calls**: `apiFetch()` wrapper attaches Bearer token, auto-redirects to login on 401. All paths relative (`/api/auth/login`) — nginx routes to backend.
+- **Docker**: Vite dev server in node:22-alpine container. Volume mount `src/` only (not node_modules) for HMR.
+- **Nginx**: WebSocket upgrade headers on `/operator/` location for Vite HMR through nginx.
 
 ## User Preferences
 

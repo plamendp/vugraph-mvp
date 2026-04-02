@@ -120,6 +120,20 @@ describe("Auth flow with MockDB", () => {
     expect(decoded.roles).toEqual(["operator"]);
   });
 
+  it("lists all users ordered by id", async () => {
+    const h = await hashPassword("pass");
+    await db.createUser("zara", h);
+    await db.createUser("alice", h);
+    await db.createUser("mike", h);
+
+    const all = await db.listUsers();
+    expect(all).toHaveLength(3);
+    expect(all[0].username).toBe("zara");
+    expect(all[1].username).toBe("alice");
+    expect(all[2].username).toBe("mike");
+    expect(all[0].id).toBeLessThan(all[1].id);
+  });
+
   it("rejects login with wrong password", async () => {
     const hash = await hashPassword("correct");
     await db.createUser("locked", hash);

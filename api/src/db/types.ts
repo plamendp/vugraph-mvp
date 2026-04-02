@@ -20,6 +20,7 @@ export interface IDatabase {
   getUserByUsername(username: string): Promise<User | null>;
   getUserById(id: number): Promise<User | null>;
   createUser(username: string, passwordHash: string): Promise<User>;
+  listUsers(): Promise<User[]>;
 
   // Roles
   getUserRoles(userId: number): Promise<RoleName[]>;

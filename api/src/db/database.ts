@@ -129,6 +129,11 @@ export class DB implements IDatabase {
     return rowToUser(rows[0]);
   }
 
+  async listUsers(): Promise<User[]> {
+    const rows = await this.db.select().from(users).orderBy(users.id);
+    return rows.map(rowToUser);
+  }
+
   async createUser(username: string, passwordHash: string): Promise<User> {
     const [row] = await this.db
       .insert(users)

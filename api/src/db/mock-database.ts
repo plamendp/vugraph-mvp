@@ -73,6 +73,10 @@ export class MockDB implements IDatabase {
     return this.users.get(id) ?? null;
   }
 
+  async listUsers(): Promise<User[]> {
+    return [...this.users.values()].sort((a, b) => a.id - b.id);
+  }
+
   async createUser(username: string, passwordHash: string): Promise<User> {
     const user: User = {
       id: this.nextUserId++,

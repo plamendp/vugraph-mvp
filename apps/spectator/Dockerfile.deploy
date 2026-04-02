@@ -1,0 +1,16 @@
+# Production build — run scripts/prepare-build.sh spectator first
+# Build: docker build -f apps/spectator/Dockerfile.deploy apps/spectator/
+
+FROM node:22-alpine AS build
+WORKDIR /app/apps/spectator
+COPY package*.json ./
+RUN npm ci
+COPY tsconfig.json vite.config.ts ./
+COPY src/ src/
+# Shared code copied by prepare-build.sh
+COPY _shared/ /app/packages/ui/
+RUN npx vite build
+
+FROM nginx:alpine
+COPY --from=build /app/apps/spectator/dist /usr/share/nginx/html
+EXPOSE 80

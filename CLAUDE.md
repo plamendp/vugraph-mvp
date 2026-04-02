@@ -54,13 +54,14 @@ Web-based vugraph system for broadcasting contract bridge matches in real time.
 
 The application code is identical in local and cloud deployments. Only the outer routing layer differs (nginx vs ALB/CloudFront). Centrifugo + Redis run as the same Docker images in both environments.
 
-### Local (Docker Compose — 6 containers)
+### Local (Docker Compose — 7 containers)
 
 ```
 Client (browser)
     |
   nginx (:80)
     |-- /operator/*               --> operator (:5001)
+    |-- /spectator/*              --> spectator (:5002)
     |-- /api/*                    --> backend (:3000)
     |-- /connection/websocket     --> centrifugo (:8000)
 
@@ -178,24 +179,47 @@ centrifugo/
 nginx/
   nginx.conf               — Reverse proxy config
 example.env                — Env var template (cp to .env, fill secrets)
+packages/
+  ui/                      — Shared frontend library (@vugraph/ui)
+    src/
+      index.ts             — Barrel export
+      auth/
+        api.ts             — Fetch wrapper (Bearer token, configurable 401 redirect)
+        AuthContext.tsx     — Auth state (user, token, login, logout)
+        ProtectedRoute.tsx — Redirect if not authenticated / wrong role
+        types.ts           — RoleName, UserInfo types
+    package.json           — Peer deps: react, react-router-dom
+    tsconfig.json
 apps/
   operator/                — Operator + Admin frontend (React + Vite)
     src/
-      main.tsx             — Entry point (React root, BrowserRouter, AuthProvider)
+      main.tsx             — Entry point (configureAuth, BrowserRouter, AuthProvider)
       App.tsx              — Routes: /login, /users (protected)
-      api.ts               — Fetch wrapper (Bearer token, 401 handling)
-      styles.css           — MVP styling
-      auth/
-        AuthContext.tsx     — Auth state (user, token, login, logout)
-        ProtectedRoute.tsx — Redirect if not authenticated / wrong role
+      styles.css           — MVP styling (blue accent)
       pages/
         LoginPage.tsx      — Login form
         UsersPage.tsx      — User list table + create user form
-    Dockerfile             — Vite dev server container
+    Dockerfile             — Vite dev server container (local dev)
+    Dockerfile.deploy      — Multi-stage production build (nginx + static)
     package.json
-    vite.config.ts         — base: /operator/, port 5001
-    tsconfig.json
-docker-compose.yml         — Local 6-service stack
+    vite.config.ts         — base: /operator/, alias @vugraph/ui, port 5001
+    tsconfig.json          — paths: @vugraph/ui → ../../packages/ui/src
+  spectator/               — Spectator + Commentator frontend (React + Vite)
+    src/
+      main.tsx             — Entry point (configureAuth, BrowserRouter, AuthProvider)
+      App.tsx              — Routes: /login, /matches
+      styles.css           — MVP styling (green accent)
+      pages/
+        LoginPage.tsx      — Login form
+        MatchListPage.tsx  — Match list (cards), commentator role detected
+    Dockerfile             — Vite dev server container (local dev)
+    Dockerfile.deploy      — Multi-stage production build (nginx + static)
+    package.json
+    vite.config.ts         — base: /spectator/, alias @vugraph/ui, port 5002
+    tsconfig.json          — paths: @vugraph/ui → ../../packages/ui/src
+scripts/
+  prepare-build.sh         — Copies packages/ui into app for isolated Docker builds
+docker-compose.yml         — Local 7-service stack
 package.json               — Root scripts (stack, stack:down, db:seed)
 ```
 
@@ -268,14 +292,18 @@ See `example.env` for the full template.
 - Centrifugo proxy integration (src/centrifugo/ — connect, subscribe, RPC handlers)
 - WebSocket protocol and message type definitions (src/ws/protocol.ts)
 - Admin frontend (apps/operator/) — login page, user management (list + create with roles)
-- Docker infrastructure: 6 services (nginx, backend, centrifugo, redis, postgres, operator)
+- Spectator frontend (apps/spectator/) — login page, match list (commentator role detected)
+- Shared UI package (packages/ui/) — auth context, protected route, API fetch wrapper, types
+- Docker infrastructure: 7 services (nginx, backend, centrifugo, redis, postgres, operator, spectator)
 - .env-based secrets management with example.env template
 - Admin seed script (npm run db:seed — runs from host against containerized Postgres)
+- Deployment tooling: prepare-build.sh copies shared code for isolated Docker builds
 - 69 tests, all passing
 
 **Not yet implemented:**
 - Operator board input UI (lives in apps/operator/, admin shell is done)
-- Spectator client UI (apps/spectator/)
+- Spectator live board view (WebSocket connection to Centrifugo, board rendering)
+- Commentator text input (visible in spectator app when user has commentator role)
 - File import (.pbn, .dup, .lin)
 - AWS deployment
 
@@ -289,26 +317,28 @@ See `example.env` for the full template.
 - **Testing strategy**: IDatabase interface + in-memory mock for unit tests; vitest.config.ts sets required env vars (DATABASE_URL, CENTRIFUGO_TOKEN_SECRET, CENTRIFUGO_API_KEY) so config.ts doesn't throw during test imports
 - **LOCAL_DEV**: Hardcoded `LOCAL_DEV=true` in docker-compose.yml, NOT in .env (it's always true under Docker Compose)
 - **No default secrets**: All sensitive config uses `requireEnv()` which throws if the env var is missing — no fallback defaults for secrets
-- **Frontend**: React + Vite + TypeScript, plain CSS (MVP). No monorepo tooling yet — add npm workspaces when spectator app arrives and shared components actually exist. JWT in localStorage (acceptable for internal admin tool).
+- **Frontend**: React + Vite + TypeScript, plain CSS (MVP). JWT in localStorage (acceptable for internal tool).
+- **Code sharing**: TypeScript path aliases (`@vugraph/ui` → `../../packages/ui/src`), no npm workspaces/symlinks. Each app's tsconfig + vite.config resolves the alias via named import (`import { resolve } from "path"`). `packages/ui/` has its own `node_modules` with React types so TypeScript resolves correctly. For deployment, `scripts/prepare-build.sh` copies shared code into the app dir so Docker can build with per-app context. Deployment Dockerfiles (`Dockerfile.deploy`) exist but need further tuning when AWS CDK work begins.
 
 ## Frontend Architecture
 
-### Structure: 2 apps (planned), shared package (later)
+### Structure: 2 apps + shared package
 
 ```
-apps/operator/             — Operator + Admin app (IMPLEMENTED: admin pages)
+packages/ui/               — Shared component library (@vugraph/ui)
+  Auth helpers (AuthContext, ProtectedRoute, apiFetch, configureAuth)
+  Types (RoleName, UserInfo)
+  Later: card/board components, Centrifugo client wrapper
+
+apps/operator/             — Operator + Admin app
   Login → user management (list + create with roles)
   Next: match list → board input UI (speed-optimized)
   Role gate: admin or operator required
 
-apps/spectator/            — Spectator + Commentator app (NOT YET IMPLEMENTED)
-  Login → match list → live board display (visual polish)
-  Commentator: same view + text commentary input
+apps/spectator/            — Spectator + Commentator app
+  Login → match list (→ live board view, not yet)
+  Commentator: same view + text commentary input (not yet)
   Role gate: any authenticated user; commentator features if role present
-
-packages/ui/               — Shared component library (NOT YET — add when spectator app arrives)
-  cards, hands, board display, auction box, trick display,
-  Centrifugo client wrapper, auth helpers
 ```
 
 ### Why 2 apps, not 4
@@ -321,13 +351,28 @@ packages/ui/               — Shared component library (NOT YET — add when sp
 - Separate builds = smaller bundles per role
 - Independent deployment (update operator without touching spectator)
 
+### Code Sharing Approach
+- **No npm workspaces, no symlinks** — pure TypeScript path aliases
+- Each app's `tsconfig.json`: `"paths": { "@vugraph/ui": ["../../packages/ui/src/index.ts"] }`
+- Each app's `vite.config.ts`: `resolve.alias: { "@vugraph/ui": path.resolve(__dirname, "../../packages/ui/src") }`
+- `packages/ui/` has its own `node_modules` with React types (devDependencies) so TypeScript resolves types correctly
+- `tsconfig.json` `include` covers both `src` and `../../packages/ui/src`
+- **Local dev**: Vite resolves alias at runtime; Docker mounts both `app/src` and `packages/ui/src` as volumes
+- **Deployment**: `scripts/prepare-build.sh <app>` copies `packages/ui/` → `apps/<app>/_shared/ui/`. `Dockerfile.deploy` COPYs it to `/app/packages/ui/` so the alias resolves. Build context is just the app dir. `_shared/` is gitignored.
+
 ### Operator App Details
 - **Vite config**: `base: '/operator/'`, dev server on port 5001
 - **Routing**: React Router with `basename="/operator"`. Routes: `/login`, `/users`
-- **Auth**: `AuthContext` provides `{ user, token, login, logout }`. `ProtectedRoute` checks auth + role. Token stored in localStorage as `vugraph_token`.
-- **API calls**: `apiFetch()` wrapper attaches Bearer token, auto-redirects to login on 401. All paths relative (`/api/auth/login`) — nginx routes to backend.
-- **Docker**: Vite dev server in node:22-alpine container. Volume mount `src/` only (not node_modules) for HMR.
+- **Auth**: Shared `AuthContext` from `@vugraph/ui`. `configureAuth({ loginPath: "/operator/login" })` called in main.tsx.
+- **Docker**: Vite dev server in node:22-alpine container. WORKDIR `/app/apps/operator` mirrors repo layout. Volume mounts `src/` and `packages/ui/src` for HMR.
 - **Nginx**: WebSocket upgrade headers on `/operator/` location for Vite HMR through nginx.
+
+### Spectator App Details
+- **Vite config**: `base: '/spectator/'`, dev server on port 5002
+- **Routing**: React Router with `basename="/spectator"`. Routes: `/login`, `/matches`
+- **Auth**: Same shared `AuthContext`. `configureAuth({ loginPath: "/spectator/login" })`.
+- **Styling**: Green accent (vs blue for operator) — visually distinct apps.
+- **Commentator detection**: `user.roles.includes("commentator")` shown in header. Commentary input to be added later.
 
 ## User Preferences
 

@@ -5,11 +5,11 @@ import { AuthProvider, configureAuth } from "@vugraph/ui";
 import { App } from "./App.tsx";
 import "./styles.css";
 
-configureAuth({ loginPath: "/operator/login" });
+configureAuth({ loginPath: "/spectator/login" });
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter basename="/operator">
+    <BrowserRouter basename="/spectator">
       <AuthProvider>
         <App />
       </AuthProvider>

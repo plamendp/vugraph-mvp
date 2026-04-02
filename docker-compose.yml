@@ -9,13 +9,23 @@ services:
       - backend
       - centrifugo
       - operator
+      - spectator
 
   operator:
     build: ./apps/operator
     ports:
       - "5001:5001"
     volumes:
-      - ./apps/operator/src:/app/src
+      - ./apps/operator/src:/app/apps/operator/src
+      - ./packages/ui/src:/app/packages/ui/src
+
+  spectator:
+    build: ./apps/spectator
+    ports:
+      - "5002:5002"
+    volumes:
+      - ./apps/spectator/src:/app/apps/spectator/src
+      - ./packages/ui/src:/app/packages/ui/src
 
   backend:
     build: ./api

@@ -11,7 +11,7 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   if (loading) return <div className="loading">Loading...</div>;
-  if (user && user.roles.includes("admin")) return <Navigate to="/users" replace />;
+  if (user) return <Navigate to="/matches" replace />;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -19,7 +19,7 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       await login(username, password);
-      navigate("/users");
+      navigate("/matches");
     } catch (err: any) {
       setError(err.message || "Login failed");
     } finally {
@@ -30,7 +30,7 @@ export function LoginPage() {
   return (
     <div className="login-container">
       <form className="login-form" onSubmit={handleSubmit}>
-        <h1>Vugraph Admin</h1>
+        <h1>Vugraph</h1>
         <div className="field">
           <label htmlFor="username">Username</label>
           <input

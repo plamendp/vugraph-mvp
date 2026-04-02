@@ -9,11 +9,7 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "isolatedModules": true,
-    "skipLibCheck": true,
-    "paths": {
-      "@vugraph/ui": ["../../packages/ui/src/index.ts"],
-      "@vugraph/ui/*": ["../../packages/ui/src/*"]
-    }
+    "skipLibCheck": true
   },
-  "include": ["src", "../../packages/ui/src"]
+  "include": ["src"]
 }

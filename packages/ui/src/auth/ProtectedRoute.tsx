@@ -15,7 +15,11 @@ export function ProtectedRoute({ children, requiredRole }: Props) {
   if (!user) return <Navigate to="/login" replace />;
 
   if (requiredRole && !user.roles.includes(requiredRole as any)) {
-    return <div className="error-page">Access denied. You need the <strong>{requiredRole}</strong> role.</div>;
+    return (
+      <div className="error-page">
+        Access denied. You need the <strong>{requiredRole}</strong> role.
+      </div>
+    );
   }
 
   return <>{children}</>;

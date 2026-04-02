@@ -6,17 +6,10 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { apiFetch, setToken, getToken, clearToken } from "../api.ts";
+import { apiFetch, setToken, getToken, clearToken } from "./api.ts";
+import type { RoleName, UserInfo } from "./types.ts";
 
-type RoleName = "admin" | "operator" | "spectator" | "commentator";
-
-interface UserInfo {
-  id: number;
-  username: string;
-  roles: RoleName[];
-}
-
-interface AuthState {
+export interface AuthState {
   user: UserInfo | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;

@@ -1,5 +1,15 @@
 const TOKEN_KEY = "vugraph_token";
 
+let loginRedirectPath = "/login";
+
+/**
+ * Configure the path to redirect to on 401.
+ * Must be called before any apiFetch calls (e.g., in main.tsx).
+ */
+export function configureAuth(opts: { loginPath: string }): void {
+  loginRedirectPath = opts.loginPath;
+}
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -29,7 +39,7 @@ export async function apiFetch<T>(
 
   if (res.status === 401) {
     clearToken();
-    window.location.href = "/operator/login";
+    window.location.href = loginRedirectPath;
     throw new Error("Unauthorized");
   }
 

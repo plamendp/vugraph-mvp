@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback, type FormEvent } from "react";
-import { useAuth } from "../auth/AuthContext.tsx";
-import { apiFetch } from "../api.ts";
+import { useAuth, apiFetch, type RoleName } from "@vugraph/ui";
 
-type RoleName = "admin" | "operator" | "spectator" | "commentator";
 const ALL_ROLES: RoleName[] = ["admin", "operator", "spectator", "commentator"];
 
 interface UserEntry {

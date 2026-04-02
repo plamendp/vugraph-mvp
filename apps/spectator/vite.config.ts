@@ -4,14 +4,14 @@ import { resolve } from "path";
 
 export default defineConfig({
   plugins: [react()],
-  base: "/operator/",
+  base: "/spectator/",
   resolve: {
     alias: {
       "@vugraph/ui": resolve(__dirname, "../../packages/ui/src"),
     },
   },
   server: {
-    port: 5001,
+    port: 5002,
     host: "0.0.0.0",
   },
 });

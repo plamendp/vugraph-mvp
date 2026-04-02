@@ -169,7 +169,8 @@ api/                       — Backend service
       auth.test.ts         — Password, JWT, auth flow tests (13)
     ws/
       protocol.test.ts     — Message parsing tests (12)
-  Dockerfile               — Backend multi-stage build
+  Dockerfile               — Dev container (tsx, no build step)
+  Dockerfile.deploy        — Production multi-stage build (tsc + node)
   package.json             — Backend dependencies and scripts
   tsconfig.json
   vitest.config.ts         — Test config (includes env vars for tests)
@@ -327,7 +328,8 @@ See `example.env` for the full template.
 - **No default secrets**: All sensitive config uses `requireEnv()` which throws if the env var is missing — no fallback defaults for secrets
 - **Frontend**: React + Vite + TypeScript, plain CSS (MVP). JWT in localStorage (acceptable for internal tool).
 - **Code sharing**: Two shared packages — `packages/types/` (pure types + constants, no deps) and `packages/ui/` (React components). TypeScript path aliases (`@vugraph/types/*`, `@vugraph/ui`), no npm workspaces/symlinks. Each consumer's tsconfig + vite.config resolves aliases. `packages/ui/` has its own `node_modules` with React types so TypeScript resolves correctly. For deployment, `scripts/prepare-build.sh` copies both packages into the app dir so Docker can build with per-app context.
-- **Backend module resolution**: `bundler` (not `NodeNext`). The api runs through `tsx` for dev, which handles resolution transparently. This avoids mandatory `.js` extensions. Existing `.js` import extensions are harmless and work fine with `bundler`. The api uses **relative paths** (not path aliases) to import from `packages/types/` because `tsc` doesn't rewrite path aliases in emitted JavaScript — relative paths work correctly at both compile time and runtime.
+- **Backend module resolution**: `bundler` (not `NodeNext`). The api runs through `tsx` for dev, which handles resolution transparently. This avoids mandatory `.js` extensions. Existing `.js` import extensions are harmless and work fine with `bundler`. The api uses **relative paths** (not path aliases) to import from `packages/types/` because `tsc` doesn't rewrite path aliases in emitted JavaScript — relative paths work at both compile time and runtime.
+- **Backend Docker**: Dev Dockerfile uses `tsx` (no build step); `packages/types` provided via volume mount. Production `Dockerfile.deploy` uses `tsc`; `prepare-build.sh api` copies `packages/types` into `api/_shared/` first. Same local-context pattern as frontend apps.
 
 ## Frontend Architecture
 

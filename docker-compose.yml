@@ -30,11 +30,11 @@ services:
       - ./packages/types/src:/app/packages/types/src
 
   backend:
-    build:
-      context: .
-      dockerfile: api/Dockerfile
+    build: ./api
     ports:
       - "3000:3000"
+    volumes:
+      - ./packages/types/src:/app/packages/types/src
     environment:
       - PORT=3000
       - HOST=0.0.0.0

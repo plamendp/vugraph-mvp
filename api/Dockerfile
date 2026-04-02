@@ -1,19 +1,10 @@
-# Stage 1: Build
-FROM node:22-alpine AS build
-WORKDIR /app/api
-COPY api/package.json api/package-lock.json ./
-RUN npm ci
-COPY api/tsconfig.json ./
-COPY api/src/ src/
-COPY packages/types/ /app/packages/types/
-RUN npx tsc
-
-# Stage 2: Production
+# Dev container — runs via tsx (no build step)
+# packages/types provided at runtime via docker-compose volume mount
 FROM node:22-alpine
-WORKDIR /app
-COPY api/package.json api/package-lock.json ./
-RUN npm ci --omit=dev
-COPY --from=build /app/api/dist/ dist/
-COPY api/src/db/schema.sql dist/api/src/db/schema.sql
+WORKDIR /app/api
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src/ src/
 EXPOSE 3000
-CMD ["node", "dist/api/src/server.js"]
+CMD ["npx", "tsx", "src/server.ts"]

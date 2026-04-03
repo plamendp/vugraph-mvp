@@ -20,7 +20,8 @@
     "token": {
       "hmac_secret_key": ""
     },
-    "allowed_origins": ["http://localhost", "http://localhost:80"]
+    "allowed_origins": ["http://localhost", "http://localhost:80"],
+    "subscribe_allowed": true
   },
   "channel": {
     "namespaces": [
@@ -29,13 +30,15 @@
         "presence": true,
         "history_size": 50,
         "history_ttl": "300s",
-        "force_recovery": true
+        "force_recovery": true,
+        "subscribe_proxy_required": false
       },
       {
         "name": "notifications",
         "history_size": 10,
         "history_ttl": "60s",
-        "force_recovery": true
+        "force_recovery": true,
+        "subscribe_proxy_required": false
       }
     ]
   },
@@ -54,7 +57,7 @@
       "address": "redis://redis:6379"
     }
   },
-  "log_level": "info",
+  "log_level": "debug",
   "admin": {
     "enabled": true,
     "password": "",

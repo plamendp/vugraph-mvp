@@ -76,9 +76,19 @@ export function centrifugoProxyRoutes(app: FastifyInstance, db: IDatabase): void
   }>("/centrifugo/subscribe", async (req, reply) => {
     const { channel, user } = req.body;
 
+    console.error('--------------------------------------------------------->>>>>>>>>>>>>>>>>>');
+
+
+
+
     // notifications:global — any authenticated user can subscribe
     if (channel === "notifications:global") {
-      return reply.send({ result: {} });
+
+      return reply.send({
+        result: {
+          subscribe: {},
+        },
+      });
     }
 
     // match:{matchId} — verify match exists
@@ -99,7 +109,9 @@ export function centrifugoProxyRoutes(app: FastifyInstance, db: IDatabase): void
 
       return reply.send({
         result: {
-          data: responseData,
+          subscribe: {
+            data: responseData,
+          },
         },
       });
     }

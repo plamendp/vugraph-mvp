@@ -34,7 +34,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./packages/types/src:/app/packages/types/src
+      - ./packages/types:/app/packages/types
     environment:
       - PORT=3000
       - HOST=0.0.0.0

@@ -1,5 +1,22 @@
 {
   "client": {
+    "proxy": {
+      "connect": {
+        "enabled": true,
+        "endpoint": "http://backend:3000/centrifugo/connect",
+        "timeout": "5s"
+      },
+      "subscribe": {
+        "enabled": true,
+        "endpoint": "http://backend:3000/centrifugo/subscribe",
+        "timeout": "5s"
+      },
+      "rpc": {
+        "enabled": true,
+        "endpoint": "http://backend:3000/centrifugo/rpc",
+        "timeout": "10s"
+      }
+    },
     "token": {
       "hmac_secret_key": ""
     },
@@ -13,33 +30,22 @@
         "history_size": 50,
         "history_ttl": "300s",
         "force_recovery": true
+      },
+      {
+        "name": "notifications",
+        "history_size": 10,
+        "history_ttl": "60s",
+        "force_recovery": true
       }
     ]
   },
   "http_api": {
     "key": ""
   },
-  "proxy": {
-    "connect": {
-      "enabled": true,
-      "endpoint": "http://backend:3000/centrifugo/connect",
-      "timeout": "5s"
-    },
-    "subscribe": {
-      "enabled": true,
-      "endpoint": "http://backend:3000/centrifugo/subscribe",
-      "timeout": "5s"
-    },
-    "rpc": {
-      "enabled": true,
-      "endpoint": "http://backend:3000/centrifugo/rpc",
-      "timeout": "10s"
-    }
-  },
   "broker": {
     "type": "redis",
     "redis": {
-      "address": "redis://redis:6379"
+      "dsn": "redis://redis:6379"
     }
   },
   "presence_manager": {

@@ -6,6 +6,7 @@ import { authRoutes } from "./api/auth.js";
 import { matchRoutes } from "./api/matches.js";
 import { boardRoutes } from "./api/boards.js";
 import { centrifugoProxyRoutes } from "./centrifugo/proxy-handler.js";
+import { broadcastRoutes } from "./api/broadcast.js";
 
 const app = Fastify({ logger: true });
 const db = new DB(DATABASE_URL);
@@ -17,6 +18,7 @@ registerAuthHook(app);
 authRoutes(app, db);
 matchRoutes(app, db);
 boardRoutes(app, db);
+broadcastRoutes(app);
 
 // Centrifugo proxy routes
 centrifugoProxyRoutes(app, db);

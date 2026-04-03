@@ -7,4 +7,4 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src/ src/
 EXPOSE 3000
-CMD ["npx", "tsx", "src/server.ts"]
+CMD ["npx", "tsx", "watch", "src/server.ts"]

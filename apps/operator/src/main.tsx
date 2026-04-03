@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { AuthProvider, configureAuth } from "@vugraph/ui";
+import { AuthProvider, CentrifugoProvider, NotificationBar, configureAuth } from "@vugraph/ui";
 import { App } from "./App.tsx";
 import "./styles.css";
 
@@ -11,7 +11,10 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter basename="/operator">
       <AuthProvider>
-        <App />
+        <CentrifugoProvider>
+          <NotificationBar />
+          <App />
+        </CentrifugoProvider>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,

@@ -25,3 +25,10 @@ export async function publish(channel: string, data: unknown): Promise<void> {
 export async function broadcastToMatch(matchId: string, data: unknown): Promise<void> {
   await publish(`match:${matchId}`, data);
 }
+
+/**
+ * Broadcast a notification to all connected clients.
+ */
+export async function broadcastNotification(data: unknown): Promise<void> {
+  await publish("notifications:global", data);
+}

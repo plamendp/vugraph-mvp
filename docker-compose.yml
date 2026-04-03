@@ -34,6 +34,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
+      - ./api/src:/app/api/src
       - ./packages/types:/app/packages/types
     environment:
       - PORT=3000

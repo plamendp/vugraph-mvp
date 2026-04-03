@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       "@vugraph/ui": resolve(__dirname, "../../packages/ui/src"),
       "@vugraph/types": resolve(__dirname, "../../packages/types/src"),
+      centrifuge: resolve(__dirname, "node_modules/centrifuge"),
     },
   },
   server: {

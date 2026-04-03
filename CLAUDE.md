@@ -152,6 +152,7 @@ api/                       — Backend service
       auth.ts              — Login, register (admin-only), me routes
       matches.ts           — Match CRUD routes (write ops: admin/operator only)
       boards.ts            — Board routes (write ops: admin/operator only)
+      broadcast.ts         — POST /api/broadcast (admin-only, publishes to Centrifugo)
     db/
       schema.ts            — Drizzle table definitions (matches, boards, users, roles, user_roles)
       schema.sql           — Raw SQL for idempotent table creation
@@ -196,7 +197,10 @@ packages/
         AuthContext.tsx     — Auth state (user, token, login, logout)
         ProtectedRoute.tsx — Redirect if not authenticated / wrong role
         types.ts           — Re-exports from @vugraph/types/auth
-    package.json           — Peer deps: react, react-router-dom
+      centrifugo/
+        CentrifugoContext.tsx — Centrifugo client (auto-connect on login, notifications channel)
+        NotificationBar.tsx   — Toast-style notification display
+    package.json           — Peer deps: centrifuge, react, react-router-dom
     tsconfig.json
 apps/
   operator/                — Operator + Admin frontend (React + Vite)
@@ -267,6 +271,7 @@ See `example.env` for the full template.
 - `POST /api/auth/register` — admin-only, creates user with specified roles
 - `GET /api/auth/users` — admin-only, returns all users with roles
 - `GET /api/auth/me` — any authenticated user, returns own info
+- `POST /api/broadcast` — admin-only, sends notification to all connected WebSocket clients
 
 ### Public Paths (no auth required)
 - `POST /api/auth/login`
@@ -301,10 +306,12 @@ See `example.env` for the full template.
 - Drizzle ORM for Postgres (src/db/schema.ts + database.ts)
 - Centrifugo proxy integration (src/centrifugo/ — connect, subscribe, RPC handlers)
 - WebSocket protocol and message type definitions (src/ws/protocol.ts)
-- Admin frontend (apps/operator/) — login page, user management (list + create with roles)
+- Admin frontend (apps/operator/) — login page, user management (list + create with roles), broadcast messages
 - Spectator frontend (apps/spectator/) — login page, match list (commentator role detected)
 - Shared types package (packages/types/) — domain types, auth types, constants (single source of truth)
-- Shared UI package (packages/ui/) — auth context, protected route, API fetch wrapper
+- Shared UI package (packages/ui/) — auth context, protected route, API fetch wrapper, Centrifugo client
+- Centrifugo WebSocket integration: both apps auto-connect on login, subscribe to notifications channel
+- Admin broadcast: POST /api/broadcast sends message to all connected clients via Centrifugo
 - Docker infrastructure: 7 services (nginx, backend, centrifugo, redis, postgres, operator, spectator)
 - .env-based secrets management with example.env template
 - Admin seed script (npm run db:seed — runs from host against containerized Postgres)

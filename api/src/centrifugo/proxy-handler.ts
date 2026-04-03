@@ -31,11 +31,15 @@ export function centrifugoProxyRoutes(app: FastifyInstance, db: IDatabase): void
       transport: string;
       protocol: string;
       encoding: string;
-      data?: { token?: string };
+      data?: { token?: string } | string;
     };
   }>("/centrifugo/connect", async (req, reply) => {
-    const { data } = req.body;
-    const token = data?.token;
+    // Centrifugo v6 sends data as a JSON-encoded string
+    let data = req.body.data;
+    if (typeof data === "string") {
+      try { data = JSON.parse(data); } catch { data = undefined; }
+    }
+    const token = (data as { token?: string } | undefined)?.token;
 
     if (!token) {
       return reply.send({
@@ -72,7 +76,12 @@ export function centrifugoProxyRoutes(app: FastifyInstance, db: IDatabase): void
   }>("/centrifugo/subscribe", async (req, reply) => {
     const { channel, user } = req.body;
 
-    // Channels are `match:{matchId}` — verify match exists
+    // notifications:global — any authenticated user can subscribe
+    if (channel === "notifications:global") {
+      return reply.send({ result: {} });
+    }
+
+    // match:{matchId} — verify match exists
     if (channel.startsWith("match:")) {
       const matchId = channel.slice(6);
       const match = await db.getMatch(matchId);

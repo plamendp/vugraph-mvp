@@ -227,6 +227,8 @@ apps/
     tsconfig.json          — paths: @vugraph/ui, @vugraph/types
 scripts/
   prepare-build.sh         — Copies packages/ui + packages/types into app for isolated Docker builds
+docs/
+  architecture.pdf         — System architecture diagram (AWS + Local, 2-page PDF)
 docker-compose.yml         — Local 7-service stack
 package.json               — Root scripts (stack, stack:down, db:seed)
 ```
@@ -314,7 +316,16 @@ See `example.env` for the full template.
 - Spectator live board view (WebSocket connection to Centrifugo, board rendering)
 - Commentator text input (visible in spectator app when user has commentator role)
 - File import (.pbn, .dup, .lin)
-- AWS deployment
+- AWS deployment (CDK) — architecture planned, see docs/architecture.pdf
+
+**AWS deployment architecture** (planned, documented in docs/architecture.pdf):
+- CloudFront: SSL termination, CDN, routes /operator/* and /spectator/* to S3, everything else to ALB
+- ALB: path-based routing — /api/* to Backend ECS, /connection/* to Centrifugo ECS
+- ECS Cluster: Backend (API) and Centrifugo as separate Fargate services
+- RDS PostgreSQL (Multi-AZ) replaces local Postgres
+- ElastiCache Redis replaces local Redis
+- S3: hosts operator and spectator SPAs as static sites
+- Same backend code as local — only infrastructure wrapper changes
 
 ## Decisions Made
 
@@ -329,7 +340,8 @@ See `example.env` for the full template.
 - **Frontend**: React + Vite + TypeScript, plain CSS (MVP). JWT in localStorage (acceptable for internal tool).
 - **Code sharing**: Two shared packages — `packages/types/` (pure types + constants, no deps) and `packages/ui/` (React components). TypeScript path aliases (`@vugraph/types/*`, `@vugraph/ui`), no npm workspaces/symlinks. Each consumer's tsconfig + vite.config resolves aliases. `packages/ui/` has its own `node_modules` with React types so TypeScript resolves correctly. For deployment, `scripts/prepare-build.sh` copies both packages into the app dir so Docker can build with per-app context.
 - **Backend module resolution**: `bundler` (not `NodeNext`). The api runs through `tsx` for dev, which handles resolution transparently. This avoids mandatory `.js` extensions. Existing `.js` import extensions are harmless and work fine with `bundler`. The api uses **relative paths** (not path aliases) to import from `packages/types/` because `tsc` doesn't rewrite path aliases in emitted JavaScript — relative paths work at both compile time and runtime.
-- **Backend Docker**: Dev Dockerfile uses `tsx` (no build step); `packages/types` provided via volume mount. Production `Dockerfile.deploy` uses `tsc`; `prepare-build.sh api` copies `packages/types` into `api/_shared/` first. Same local-context pattern as frontend apps.
+- **Backend Docker**: Dev Dockerfile uses `tsx` (no build step); `packages/types` provided via volume mount (must mount full `packages/types/` dir, not just `src/`, because Node needs `package.json` with `"type": "module"` for ESM resolution). Production `Dockerfile.deploy` uses `tsc`; `prepare-build.sh api` copies `packages/types` into `api/_shared/` first. Same local-context pattern as frontend apps.
+- **Import extensions**: Backend uses `.js` extensions in imports (e.g., `from "./types.js"`). These are required for `tsc` emit — `tsc` doesn't rewrite extensions, so `.ts` extensions would break the production build. `tsx` and `vitest` handle `.js` → `.ts` resolution transparently in dev/test.
 
 ## Frontend Architecture
 

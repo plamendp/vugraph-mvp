@@ -248,7 +248,7 @@ Backend env vars (in `src/config.ts`):
 - `LOCAL_DEV` — `true` when running via Docker Compose (hardcoded in docker-compose.yml, NOT in .env)
 - `DATABASE_URL` — Postgres connection string (required, constructed from POSTGRES_* vars in compose)
 - `CENTRIFUGO_API_URL` — Centrifugo HTTP API endpoint (default: http://localhost:8000/api)
-- `CENTRIFUGO_API_KEY` — API key for Centrifugo server API (required)
+- `CENTRIFUGO_HTTP_API_KEY` — API key for Centrifugo server API (required)
 - `CENTRIFUGO_TOKEN_SECRET` — HMAC secret shared with Centrifugo for JWT signing (required)
 
 .env vars (not backend config, used by Docker Compose):
@@ -341,7 +341,7 @@ See `example.env` for the full template.
 - **Redis**: Used by Centrifugo for pub/sub + presence + history; backend does NOT use Redis directly
 - **Auth**: JWT using CENTRIFUGO_TOKEN_SECRET as shared HMAC secret (single secret for both REST auth and Centrifugo client auth); bcrypt for password hashing; 24h token expiry; no refresh tokens (MVP)
 - **Host-to-container tooling**: npm scripts in root package.json source .env and connect to localhost-exposed ports (e.g., db:seed connects to Postgres on localhost:5432)
-- **Testing strategy**: IDatabase interface + in-memory mock for unit tests; vitest.config.ts sets required env vars (DATABASE_URL, CENTRIFUGO_TOKEN_SECRET, CENTRIFUGO_API_KEY) so config.ts doesn't throw during test imports
+- **Testing strategy**: IDatabase interface + in-memory mock for unit tests; vitest.config.ts sets required env vars (DATABASE_URL, CENTRIFUGO_TOKEN_SECRET, CENTRIFUGO_HTTP_API_KEY) so config.ts doesn't throw during test imports
 - **LOCAL_DEV**: Hardcoded `LOCAL_DEV=true` in docker-compose.yml, NOT in .env (it's always true under Docker Compose)
 - **No default secrets**: All sensitive config uses `requireEnv()` which throws if the env var is missing — no fallback defaults for secrets
 - **Frontend**: React + Vite + TypeScript, plain CSS (MVP). JWT in localStorage (acceptable for internal tool).

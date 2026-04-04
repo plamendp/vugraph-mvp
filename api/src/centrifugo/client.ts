@@ -1,4 +1,4 @@
-import { CENTRIFUGO_API_URL, CENTRIFUGO_API_KEY } from "../config.js";
+import { CENTRIFUGO_API_URL, CENTRIFUGO_HTTP_API_KEY } from "../config.js";
 
 /**
  * Publish a message to a Centrifugo channel via its HTTP API.
@@ -8,7 +8,7 @@ export async function publish(channel: string, data: unknown): Promise<void> {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-API-Key": CENTRIFUGO_API_KEY,
+      "X-API-Key": CENTRIFUGO_HTTP_API_KEY,
     },
     body: JSON.stringify({ channel, data }),
   });

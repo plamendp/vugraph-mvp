@@ -224,7 +224,7 @@ npm run db:seed     # Creates "admin" user (default password: "admin", or set SE
 All sensitive config required by backend:
 
 - `CENTRIFUGO_TOKEN_SECRET` — HMAC secret (shared with Centrifugo client auth)
-- `CENTRIFUGO_API_KEY` — API key for Centrifugo HTTP server API
+- `CENTRIFUGO_HTTP_API_KEY` — API key for Centrifugo HTTP server API
 - `DATABASE_URL` — Postgres connection string
 
 **No default secrets**: `requireEnv()` throws if missing. Fail fast, don't guess.

@@ -43,7 +43,6 @@ services:
       - HOST=0.0.0.0
       - LOCAL_DEV=true
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - CENTRIFUGO_TOKEN_SECRET=${CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY}
     depends_on:
       postgres:
         condition: service_healthy

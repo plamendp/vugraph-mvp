@@ -109,7 +109,7 @@ Backend publishes these event types to `match:{matchId}`:
 
 ### JWT Structure
 
-- Signed with `CENTRIFUGO_TOKEN_SECRET` (HMAC shared with Centrifugo)
+- Signed with `CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY` (HMAC shared with Centrifugo)
 - Payload: `{ sub: userId, username, roles, exp: 24h }`
 - Verified on backend via `verifyToken(token)` (also used by Centrifugo connect proxy)
 
@@ -223,7 +223,7 @@ npm run db:seed     # Creates "admin" user (default password: "admin", or set SE
 
 All sensitive config required by backend:
 
-- `CENTRIFUGO_TOKEN_SECRET` — HMAC secret (shared with Centrifugo client auth)
+- `CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY` — HMAC secret (shared with Centrifugo client auth)
 - `CENTRIFUGO_HTTP_API_KEY` — API key for Centrifugo HTTP server API
 - `DATABASE_URL` — Postgres connection string
 
@@ -330,7 +330,7 @@ const { user, login, logout } = useAuth();
 
 1. **Import extensions**: Backend requires `.js` for tsc emit (production build). Vite frontends resolve `.ts` automatically.
 2. **Path aliases**: Frontend uses them; backend doesn't (tsc limitation).
-3. **Centrifugo JWT**: Same `CENTRIFUGO_TOKEN_SECRET` signs both REST JWT and WebSocket JWT. Not two separate secrets.
+3. **Centrifugo JWT**: Same `CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY` signs both REST JWT and WebSocket JWT. Not two separate secrets.
 4. **Undo stack**: Lives in-memory on `MatchEngine`. Survives board changes *within a session*, but lost on server restart. Good for session-local undo; not persisted.
 5. **LOCAL_DEV**: Hardcoded in docker-compose.yml, NOT in .env. Always `true` under Docker Compose.
 6. **Role lookup**: Centrifugo RPC handlers look up user roles from DB by parsed user ID. Make sure roles are seeded before testing.
@@ -367,5 +367,5 @@ npm run db:studio           # Open Drizzle Studio (visual DB browser)
 - **Why path aliases frontend-only?** tsc doesn't rewrite aliases in emitted JS; backend uses relative paths to avoid breaking production.
 - **Why shared packages not npm workspaces?** Avoids symlinks in Docker; simpler local setup. Each consumer resolves via tsconfig + vite.config.
 - **Why prepare-build.sh?** Each Docker build is isolated (single app context); script copies shared code before building. Avoids monorepo complexity.
-- **Why CENTRIFUGO_TOKEN_SECRET shared?** Single secret simplifies config; same HMAC signs REST JWT and Centrifugo client JWT.
+- **Why CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY shared?** Single secret simplifies config; same HMAC signs REST JWT and Centrifugo client JWT.
 

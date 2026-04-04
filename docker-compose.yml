@@ -36,20 +36,20 @@ services:
     volumes:
       - ./api/src:/app/api/src
       - ./packages/types:/app/packages/types
+    env_file:
+      - .env
     environment:
       - PORT=3000
       - HOST=0.0.0.0
       - LOCAL_DEV=true
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - CENTRIFUGO_API_URL=http://centrifugo:8000/api
-      - CENTRIFUGO_API_KEY=${CENTRIFUGO_API_KEY}
-      - CENTRIFUGO_TOKEN_SECRET=${CENTRIFUGO_TOKEN_SECRET}
+      - CENTRIFUGO_API_KEY=${CENTRIFUGO_HTTP_API_KEY}
+      - CENTRIFUGO_TOKEN_SECRET=${CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY}
     depends_on:
       postgres:
         condition: service_healthy
       centrifugo:
         condition: service_started
-
   centrifugo:
     image: centrifugo/centrifugo:v6
     command: centrifugo -c config.json
@@ -57,11 +57,8 @@ services:
       - ./centrifugo/config.json:/centrifugo/config.json:ro
     ports:
       - "8000:8000"
-    environment:
-      - CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY=${CENTRIFUGO_TOKEN_SECRET}
-      - CENTRIFUGO_HTTP_API_KEY=${CENTRIFUGO_API_KEY}
-      - CENTRIFUGO_ADMIN_PASSWORD=${CENTRIFUGO_ADMIN_PASSWORD}
-      - CENTRIFUGO_ADMIN_SECRET=${CENTRIFUGO_ADMIN_SECRET}
+    env_file:
+      - .env
     ulimits:
       nofile:
         soft: 65535

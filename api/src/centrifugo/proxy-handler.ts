@@ -41,6 +41,8 @@ export function centrifugoProxyRoutes(app: FastifyInstance, db: IDatabase): void
     }
     const token = (data as { token?: string } | undefined)?.token;
 
+    console.log('-------------------> CONNECT: ', token);
+
     if (!token) {
       return reply.send({
         error: { code: 401, message: "Missing authentication token" },
@@ -76,9 +78,7 @@ export function centrifugoProxyRoutes(app: FastifyInstance, db: IDatabase): void
   }>("/centrifugo/subscribe", async (req, reply) => {
     const { channel, user } = req.body;
 
-    console.error('--------------------------------------------------------->>>>>>>>>>>>>>>>>>');
-
-
+    console.log('-------------------> SUBSCRIBE: ', channel);
 
 
     // notifications:global — any authenticated user can subscribe

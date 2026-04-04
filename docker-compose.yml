@@ -1,3 +1,9 @@
+# Notes
+#
+# Every container injects all env vars from the same .env file (where applicable).
+# This is to make it easier to manage env vars in one place and avoid issues
+# with missing env vars in different containers.
+
 services:
   nginx:
     image: nginx:alpine
